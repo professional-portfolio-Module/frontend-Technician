@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react-native";
+import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, Image as ImageIcon, X, Info } from "lucide-react-native";
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
@@ -33,6 +34,7 @@ export default function MachineProfile() {
   const [isVerifying, setIsVerifying] = useState(true);
   const [isNear, setIsNear] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
+  const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
 
   useEffect(() => {
     checkProximity();
@@ -59,6 +61,34 @@ export default function MachineProfile() {
     } finally {
       setIsVerifying(false);
     }
+  };
+
+  const handlePickEvidence = async () => {
+    Alert.alert(
+      "Photo Evidence",
+      "Take a photo or choose from gallery to verify the check.",
+      [
+        { text: "Take Photo", onPress: () => launchCamera() },
+        { text: "Choose from Gallery", onPress: () => launchLibrary() },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
+  const launchCamera = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) setEvidenceImage(result.assets[0].uri);
+  };
+
+  const launchLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) setEvidenceImage(result.assets[0].uri);
   };
 
   const handleUpdateStatus = () => {
@@ -153,14 +183,38 @@ export default function MachineProfile() {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Work Evidence</Text>
+          {!evidenceImage ? (
+            <TouchableOpacity style={styles.uploadBox} onPress={handlePickEvidence}>
+              <Camera color="#1B428A" size={32} />
+              <Text style={styles.uploadText}>Add Photo Evidence</Text>
+              <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.evidenceContainer}>
+              <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
+              <TouchableOpacity 
+                style={styles.removeEvidence} 
+                onPress={() => setEvidenceImage(null)}
+              >
+                <X color="white" size={16} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={[styles.updateBtn, machine.status === "check completed" && styles.disabledBtn]} 
+          style={[
+            styles.updateBtn, 
+            (machine.status === "check completed" || !evidenceImage) && styles.disabledBtn
+          ]} 
           onPress={handleUpdateStatus}
-          disabled={machine.status === "check completed" || updateLoading}
+          disabled={machine.status === "check completed" || updateLoading || !evidenceImage}
         >
           {updateLoading ? (
             <ActivityIndicator color="white" />
@@ -390,5 +444,100 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#94a3b8",
     fontStyle: "italic",
+  },
+  uploadBox: {
+    height: 160,
+    backgroundColor: "white",
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  uploadText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1B428A",
+  },
+  uploadSubtext: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  evidenceContainer: {
+    position: "relative",
+    width: "100%",
+    height: 200,
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  evidencePreview: {
+    width: "100%",
+    height: "100%",
+  },
+  removeEvidence: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepTracker: {
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 24,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  stepIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  stepDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#e2e8f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  activeStep: {
+    backgroundColor: "#1B428A",
+  },
+  stepNum: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  stepLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#e2e8f0",
+    marginHorizontal: 4,
+  },
+  activeLine: {
+    backgroundColor: "#1B428A",
+  },
+  stepLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  stepLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748b",
+    width: 60,
+    textAlign: "center",
   },
 });

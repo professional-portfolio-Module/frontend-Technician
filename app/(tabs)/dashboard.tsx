@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode } from "lucide-react-native";
+import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode, HelpCircle, ArrowRight } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 
 const { width } = Dimensions.get("window");
@@ -429,5 +429,70 @@ const styles = StyleSheet.create({
     color: "#10b981",
     fontSize: 10,
     fontWeight: "bold",
+  },
+  guideCard: {
+    backgroundColor: "white",
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+  },
+  guideHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  guideTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  dismissText: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  stepsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  stepItem: {
+    alignItems: "center",
+    gap: 8,
+  },
+  stepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepCircleActive: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#10b981",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepNumber: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#64748b",
+  },
+  stepText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#94a3b8",
   },
 });

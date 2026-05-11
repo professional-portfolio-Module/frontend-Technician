@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { X, Zap, QrCode, Info } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 
@@ -9,6 +10,7 @@ const { width, height } = Dimensions.get("window");
 const SCAN_AREA_SIZE = width * 0.7;
 
 export default function ScanScreen() {
+  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -42,8 +44,10 @@ export default function ScanScreen() {
 
   const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
     setScanned(true);
-    alert(`Bar code with type ${type} and data ${data} has been scanned!`);
-    // Handle scanning logic here
+    // Simulate finding a machine ID from the QR code
+    // For demo, we'll navigate to MCH-7829
+    router.push(`/machine/MCH-7829`);
+    
     setTimeout(() => setScanned(false), 2000);
   };
 

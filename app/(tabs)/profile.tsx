@@ -29,7 +29,7 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Profile</Text>
           <TouchableOpacity style={styles.settingsBtn}>
-            <Settings color="#0f172a" size={20} />
+            <Settings color="#1B428A" size={20} />
           </TouchableOpacity>
         </View>
 
@@ -65,9 +65,9 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
           <View style={styles.itemsCard}>
-            <ProfileItem icon={User} title="Personal Information" color="#0066FF" />
-            <ProfileItem icon={Shield} title="Security & Password" color="#10B981" />
-            <ProfileItem icon={HelpCircle} title="Help & Support" color="#F59E0B" isLast={true} />
+            <ProfileItem icon={User} title="Personal Information" color="#1B428A" />
+            <ProfileItem icon={Shield} title="Security & Password" color="#C5A059" />
+            <ProfileItem icon={HelpCircle} title="Help & Support" color="#1B428A" isLast={true} />
           </View>
         </View>
 
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#0f172a",
+    color: "#1B428A",
   },
   settingsBtn: {
     width: 44,
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: "rgba(27, 66, 138, 0.1)",
   },
   profileCard: {
     backgroundColor: "white",
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     borderWidth: 4,
-    borderColor: "#f0f7ff",
+    borderColor: "rgba(197, 160, 89, 0.2)",
   },
   statusDot: {
     position: "absolute",
@@ -150,12 +150,13 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#0f172a",
+    color: "#1B428A",
     marginBottom: 4,
   },
   role: {
     fontSize: 14,
-    color: "#64748b",
+    color: "#C5A059",
+    fontWeight: "600",
     marginBottom: 20,
   },
   statsRow: {
@@ -174,7 +175,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1e293b",
+    color: "#1B428A",
   },
   statLabel: {
     fontSize: 12,
@@ -192,7 +193,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#0f172a",
+    color: "#1B428A",
     marginBottom: 16,
   },
   itemsCard: {
@@ -237,8 +238,10 @@ const styles = StyleSheet.create({
     gap: 10,
     marginHorizontal: 24,
     height: 60,
-    backgroundColor: "#fef2f2",
+    backgroundColor: "#fff1f2",
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#fee2e2",
     marginBottom: 20,
   },
   logoutText: {

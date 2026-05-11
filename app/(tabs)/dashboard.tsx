@@ -19,7 +19,7 @@ export default function Dashboard() {
             <Text style={styles.userName}>Technician #42</Text>
           </View>
           <TouchableOpacity style={styles.notificationBtn}>
-            <Bell color="#0f172a" size={22} />
+            <Bell color="#1B428A" size={22} />
           </TouchableOpacity>
         </View>
 
@@ -34,7 +34,7 @@ export default function Dashboard() {
           </View>
           <View style={[styles.statCard, styles.whiteCard]}>
             <View style={styles.statIconContainerSecondary}>
-              <CheckCircle2 color="#10B981" size={20} />
+              <CheckCircle2 color="#C5A059" size={20} />
             </View>
             <Text style={styles.statLabelDark}>Completed</Text>
             <Text style={styles.statValueDark}>45</Text>
@@ -63,7 +63,7 @@ export default function Dashboard() {
           
           <View style={styles.cardFooter}>
             <View style={styles.deadlineIcon}>
-              <Calendar color="#64748b" size={14} />
+              <Calendar color="#1B428A" size={14} />
             </View>
             <Text style={styles.deadlineText}>Deadline: Today, 4:00 PM</Text>
           </View>
@@ -80,7 +80,7 @@ export default function Dashboard() {
         {[1, 2].map((i) => (
           <View key={i} style={styles.upcomingCard}>
             <View style={styles.upcomingIconContainer}>
-              <AlertCircle color="#94a3b8" size={24} />
+              <AlertCircle color="#C5A059" size={24} />
             </View>
             <View style={styles.flex1}>
               <Text style={styles.upcomingTitle}>Electrical Panel Check</Text>
@@ -132,9 +132,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: "rgba(27, 66, 138, 0.1)",
     elevation: 2,
-    shadowColor: "#cbd5e1",
+    shadowColor: "#1B428A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   statIconContainerSecondary: {
     width: 40,
     height: 40,
-    backgroundColor: "rgba(16, 185, 129, 0.1)",
+    backgroundColor: "rgba(197, 160, 89, 0.1)",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statValueDark: {
-    color: "#0f172a",
+    color: "#1B428A",
     fontSize: 24,
     fontWeight: "bold",
   },
@@ -231,13 +231,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   badge: {
-    backgroundColor: "#dbeafe",
+    backgroundColor: "rgba(197, 160, 89, 0.1)",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 100,
   },
   badgeText: {
-    color: "#1d4ed8",
+    color: "#C5A059",
     fontSize: 10,
     fontWeight: "bold",
     textTransform: "uppercase",
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   jobTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#0f172a",
+    color: "#1B428A",
     marginBottom: 8,
   },
   jobLocation: {
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   deadlineIcon: {
     width: 32,
     height: 32,
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "rgba(27, 66, 138, 0.05)",
     borderRadius: 100,
     alignItems: "center",
     justifyContent: "center",
@@ -320,13 +320,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   priorityBadge: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: "rgba(197, 160, 89, 0.1)",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
   priorityText: {
-    color: "#64748b",
+    color: "#C5A059",
     fontSize: 10,
     fontWeight: "bold",
   },

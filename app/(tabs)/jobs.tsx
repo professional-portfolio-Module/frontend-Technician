@@ -16,12 +16,12 @@ export default function JobsScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Schedule</Text>
         <TouchableOpacity style={styles.filterBtn}>
-          <Filter color="#0066FF" size={20} />
+          <Filter color="#1B428A" size={20} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.searchBar}>
-        <Search color="#94a3b8" size={20} />
+        <Search color="#C5A059" size={20} />
         <Text style={styles.searchText}>Search for jobs or locations...</Text>
       </View>
 
@@ -31,11 +31,11 @@ export default function JobsScreen() {
             <View style={styles.jobInfo}>
               <Text style={styles.jobTitle}>{job.title}</Text>
               <View style={styles.detailRow}>
-                <MapPin color="#94a3b8" size={14} />
+                <MapPin color="#C5A059" size={14} />
                 <Text style={styles.detailText}>{job.location}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Clock color="#94a3b8" size={14} />
+                <Clock color="#C5A059" size={14} />
                 <Text style={styles.detailText}>{job.time}</Text>
               </View>
             </View>
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#0f172a",
+    color: "#1B428A",
   },
   filterBtn: {
     width: 44,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: "rgba(27, 66, 138, 0.1)",
   },
   searchBar: {
     flexDirection: "row",
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: "rgba(27, 66, 138, 0.1)",
     marginBottom: 24,
     gap: 12,
   },
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   jobTitle: {
     fontSize: 17,
     fontWeight: "bold",
-    color: "#1e293b",
+    color: "#1B428A",
     marginBottom: 8,
   },
   detailRow: {
@@ -148,15 +148,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  highPriority: { backgroundColor: "#fef2f2" },
-  medPriority: { backgroundColor: "#fffbeb" },
-  lowPriority: { backgroundColor: "#f0fdf4" },
+  highPriority: { backgroundColor: "rgba(239, 68, 68, 0.1)" },
+  medPriority: { backgroundColor: "rgba(197, 160, 89, 0.1)" },
+  lowPriority: { backgroundColor: "rgba(27, 66, 138, 0.1)" },
   priorityText: {
     fontSize: 10,
     fontWeight: "bold",
     textTransform: "uppercase",
   },
   highPriorityText: { color: "#ef4444" },
-  medPriorityText: { color: "#f59e0b" },
-  lowPriorityText: { color: "#10b981" },
+  medPriorityText: { color: "#C5A059" },
+  lowPriorityText: { color: "#1B428A" },
 });

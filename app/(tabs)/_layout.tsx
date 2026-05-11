@@ -43,7 +43,26 @@ export default function TabLayout() {
         name="scan"
         options={{
           title: "Scan",
-          tabBarIcon: ({ color }) => <QrCode color={color} size={24} />,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{
+              backgroundColor: "#C5A059",
+              width: 54,
+              height: 54,
+              borderRadius: 18,
+              justifyContent: "center",
+              alignItems: "center",
+              marginTop: -30,
+              borderWidth: 4,
+              borderColor: "#FFFFFF",
+              elevation: 8,
+              shadowColor: "#C5A059",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+            }}>
+              <QrCode color="white" size={26} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen

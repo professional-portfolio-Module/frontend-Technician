@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare } from "lucide-react-native";
+import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 
 const { width } = Dimensions.get("window");
@@ -28,7 +28,10 @@ export default function Dashboard() {
               <MessageSquare color="#1B428A" size={22} />
               <View style={styles.unreadBadge} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerBtn}>
+            <TouchableOpacity 
+              style={styles.headerBtn}
+              onPress={() => router.push("/notifications")}
+            >
               <Bell color="#1B428A" size={22} />
             </TouchableOpacity>
           </View>
@@ -51,6 +54,26 @@ export default function Dashboard() {
             <Text style={styles.statValueDark}>45</Text>
           </View>
         </View>
+
+        {/* Quick Scan Section */}
+        <TouchableOpacity 
+          style={styles.scanHeroCard}
+          onPress={() => router.push("/(tabs)/scan")}
+          activeOpacity={0.9}
+        >
+          <View style={styles.scanHeroContent}>
+            <View style={styles.scanIconLarge}>
+              <QrCode color="white" size={32} />
+            </View>
+            <View>
+              <Text style={styles.scanHeroTitle}>Scan Machine</Text>
+              <Text style={styles.scanHeroSubtitle}>Instantly access machine profile</Text>
+            </View>
+          </View>
+          <View style={styles.scanHeroBadge}>
+            <Text style={styles.scanHeroBadgeText}>READY</Text>
+          </View>
+        </TouchableOpacity>
 
         {/* Active Job Card */}
         <View style={styles.sectionHeader}>
@@ -354,6 +377,56 @@ const styles = StyleSheet.create({
   },
   priorityText: {
     color: "#C5A059",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  scanHeroCard: {
+    backgroundColor: "white",
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 32,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#C5A059",
+    elevation: 8,
+    shadowColor: "#C5A059",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+  },
+  scanHeroContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  scanIconLarge: {
+    width: 60,
+    height: 60,
+    backgroundColor: "#C5A059",
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scanHeroTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1B428A",
+  },
+  scanHeroSubtitle: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  scanHeroBadge: {
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  scanHeroBadgeText: {
+    color: "#10b981",
     fontSize: 10,
     fontWeight: "bold",
   },

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ChevronLeft, Bell, AlertTriangle, CheckCircle2, ClipboardList, Clock } from "lucide-react-native";
@@ -54,7 +54,7 @@ export default function NotificationsScreen() {
 
   const renderItem = ({ item }: { item: typeof MOCK_NOTIFICATIONS[0] }) => (
     <TouchableOpacity style={[styles.notificationCard, item.unread && styles.unreadCard]}>
-      <View style={[styles.iconContainer, styles[`${item.type}Icon` as keyof typeof styles]]}>
+      <View style={[styles.iconContainer, styles[`${item.type}Icon` as keyof typeof styles] as ViewStyle]}>
         {getIcon(item.type)}
       </View>
       <View style={styles.content}>

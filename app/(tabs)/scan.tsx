@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Easing } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -15,8 +15,28 @@ export default function ScanScreen() {
   const [scanned, setScanned] = useState(false);
   const [flash, setFlash] = useState(false);
 
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     requestPermission();
+    
+    // Start scanning line animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, {
+          toValue: SCAN_AREA_SIZE - 2,
+          duration: 2000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineAnim, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, []);
 
   if (!permission) {
@@ -80,8 +100,13 @@ export default function ScanScreen() {
             <View style={[styles.corner, styles.bottomLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
             
-            {/* Scanning Line Animation placeholder */}
-            <View style={styles.scanningLine} />
+            {/* Scanning Line Animation */}
+            <Animated.View 
+              style={[
+                styles.scanningLine, 
+                { transform: [{ translateY: scanLineAnim }] }
+              ]} 
+            />
           </View>
           <View style={styles.unfilled} />
         </View>

@@ -1,7 +1,9 @@
 import React from "react";
 import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { User, Settings, LogOut, Shield, HelpCircle, ChevronRight, LucideIcon } from "lucide-react-native";
+import { User, Settings, LogOut, Shield, HelpCircle, ChevronRight, LucideIcon, Languages } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 
 interface ProfileItemProps {
   icon: LucideIcon;
@@ -23,11 +25,16 @@ const ProfileItem = ({ icon: Icon, title, color = "#64748b", isLast = false }: P
 );
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
+
+  const changeLanguage = (lng: string) => {
+    i18n.changeLanguage(lng);
+  };
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerTitle}>{t("profile")}</Text>
           <TouchableOpacity style={styles.settingsBtn}>
             <Settings color="#1B428A" size={20} />
           </TouchableOpacity>
@@ -63,6 +70,30 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t("language")}</Text>
+          <View style={styles.languageContainer}>
+            <TouchableOpacity 
+              style={[styles.langBtn, i18n.language === "en" && styles.langBtnActive]} 
+              onPress={() => changeLanguage("en")}
+            >
+              <Text style={[styles.langBtnText, i18n.language === "en" && styles.langBtnTextActive]}>English</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.langBtn, i18n.language === "si" && styles.langBtnActive]} 
+              onPress={() => changeLanguage("si")}
+            >
+              <Text style={[styles.langBtnText, i18n.language === "si" && styles.langBtnTextActive]}>සිංහල</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.langBtn, i18n.language === "ta" && styles.langBtnActive]} 
+              onPress={() => changeLanguage("ta")}
+            >
+              <Text style={[styles.langBtnText, i18n.language === "ta" && styles.langBtnTextActive]}>தமிழ்</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
           <View style={styles.itemsCard}>
             <ProfileItem icon={User} title="Personal Information" color="#1B428A" />
@@ -73,7 +104,7 @@ export default function ProfileScreen() {
 
         <TouchableOpacity style={styles.logoutBtn}>
           <LogOut color="#ef4444" size={20} />
-          <Text style={styles.logoutText}>Sign Out</Text>
+          <Text style={styles.logoutText}>{t("logout")}</Text>
         </TouchableOpacity>
         
         <View style={{ height: 100 }} />
@@ -248,5 +279,36 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  languageContainer: {
+    flexDirection: "row",
+    gap: 10,
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  langBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  langBtnActive: {
+    backgroundColor: "#1B428A",
+    borderColor: "#1B428A",
+  },
+  langBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  langBtnTextActive: {
+    color: "white",
   },
 });

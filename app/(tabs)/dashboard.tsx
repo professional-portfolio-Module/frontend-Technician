@@ -2,12 +2,14 @@ import React from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle } from "lucide-react-native";
+import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 
 const { width } = Dimensions.get("window");
 
 export default function Dashboard() {
   const router = useRouter();
+  const { t } = useTranslation();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -15,12 +17,21 @@ export default function Dashboard() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.welcomeText}>Welcome back,</Text>
+            <Text style={styles.welcomeText}>{t("welcome")},</Text>
             <Text style={styles.userName}>Technician #42</Text>
           </View>
-          <TouchableOpacity style={styles.notificationBtn}>
-            <Bell color="#1B428A" size={22} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={styles.headerBtn}
+              onPress={() => router.push("/chat")}
+            >
+              <MessageSquare color="#1B428A" size={22} />
+              <View style={styles.unreadBadge} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerBtn}>
+              <Bell color="#1B428A" size={22} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats Summary */}
@@ -124,7 +135,11 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#0f172a",
   },
-  notificationBtn: {
+  headerActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  headerBtn: {
     width: 48,
     height: 48,
     backgroundColor: "white",
@@ -138,6 +153,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    position: "relative",
+  },
+  unreadBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 10,
+    height: 10,
+    backgroundColor: "#ef4444",
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: "white",
   },
   statsRow: {
     flexDirection: "row",

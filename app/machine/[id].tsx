@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react-native";
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
+import { useTranslation } from "react-i18next";
 
 // Mock Machine Data
 const MOCK_MACHINES: Record<string, any> = {
@@ -27,6 +28,7 @@ const MOCK_MACHINES: Record<string, any> = {
 export default function MachineProfile() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { t } = useTranslation();
   const [machine, setMachine] = useState(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
   const [isVerifying, setIsVerifying] = useState(true);
   const [isNear, setIsNear] = useState(false);
@@ -90,7 +92,7 @@ export default function MachineProfile() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ChevronLeft color="#1B428A" size={28} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Machine Profile</Text>
+        <Text style={styles.headerTitle}>{t("machine_profile")}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -99,7 +101,7 @@ export default function MachineProfile() {
           <View style={styles.badgeRow}>
             <View style={[styles.statusBadge, machine.status === "check completed" ? styles.successBadge : styles.pendingBadge]}>
               <Text style={[styles.statusText, machine.status === "check completed" ? styles.successText : styles.pendingText]}>
-                {machine.status.toUpperCase()}
+                {machine.status === "check completed" ? t("check_completed").toUpperCase() : t("not_checked").toUpperCase()}
               </Text>
             </View>
             <View style={styles.idBadge}>

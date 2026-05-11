@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Service Pro",
+    "name": "Technician Portal",
     "slug": "service-pro",
     "version": "1.0.0",
     "scheme": "frontend-technician",
@@ -22,13 +22,20 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.nimashmanawa.servicepro"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "94baa651-1cc3-45c1-9af8-bc801ea4d7c1"
+      }
+    }
   }
 }

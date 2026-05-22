@@ -1,14 +1,52 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Mail, Lock, ArrowRight, ChevronLeft, UserCircle2 } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import apiClient from "../../src/services/api";
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+    } else {
+      const { Alert } = require('react-native');
+      Alert.alert(title, message);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password) {
+      showAlert("Error", "Please enter your email and password");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await apiClient.post("/auth/login", {
+        usernameOrEmail: email.trim(),
+        password: password
+      });
+
+      if (response.data.success || response.status === 200) {
+        // Success! User is authenticated and cookies are set.
+        router.replace("/(tabs)/dashboard");
+      } else {
+        showAlert("Login Failed", response.data.message || "Invalid credentials");
+      }
+    } catch (error: any) {
+      console.error(error);
+      showAlert("Error", error.response?.data?.message || "Invalid credentials or server error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -68,11 +106,18 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.loginButton}
-              onPress={() => router.replace("/(tabs)/dashboard")}
+              style={[styles.loginButton, isLoading && { opacity: 0.7 }]}
+              onPress={handleLogin}
+              disabled={isLoading}
             >
-              <Text style={styles.loginButtonText}>Sign In</Text>
-              <ArrowRight color="white" size={20} />
+              {isLoading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <>
+                  <Text style={styles.loginButtonText}>Sign In</Text>
+                  <ArrowRight color="white" size={20} />
+                </>
+              )}
             </TouchableOpacity>
           </View>
 

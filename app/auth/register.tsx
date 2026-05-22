@@ -1,16 +1,59 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Mail, Lock, User, Briefcase, ChevronLeft, ArrowRight } from "lucide-react-native";
+import { Mail, Lock, User, Phone, ChevronLeft, ArrowRight, Building } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import { Picker } from "@react-native-picker/picker";
+import { HOTELS } from "../../src/constants/hotels";
+import apiClient from "../../src/services/api";
 
 export default function RegisterScreen() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [employeeId, setEmployeeId] = useState("");
+  const [mobileNo, setMobileNo] = useState("");
   const [password, setPassword] = useState("");
+  const [hotelId, setHotelId] = useState(HOTELS[0].id);
+  const [loading, setLoading] = useState(false);
+
+  const showAlert = (title: string, message: string, onSuccess?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+      if (onSuccess) onSuccess();
+    } else {
+      Alert.alert(title, message, onSuccess ? [{ text: "OK", onPress: onSuccess }] : undefined);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!fullName || !email || !mobileNo || !password || !hotelId) {
+      showAlert("Error", "Please fill in all fields");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await apiClient.post("/auth/sign-up", {
+        userName: fullName,
+        userEmail: email,
+        userMobileNo: mobileNo,
+        userPassword: password,
+        hotelId: hotelId,
+      });
+
+      if (response.data.success) {
+        showAlert("Success", "Account created successfully! Please check your email for the OTP.", () => router.push({ pathname: "/auth/verify-otp", params: { email: email } }));
+      } else {
+        showAlert("Registration Failed", response.data.message || "Something went wrong");
+      }
+    } catch (error: any) {
+      console.error("API Error: ", error);
+      showAlert("Error", error.response?.data?.message || error.message || "Failed to connect to the server");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -26,7 +69,7 @@ export default function RegisterScreen() {
           <ChevronLeft color="#1B428A" size={28} />
         </TouchableOpacity>
 
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.content}>
             <View style={styles.header}>
               <Text style={styles.title}>Create Account</Text>
@@ -63,16 +106,32 @@ export default function RegisterScreen() {
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Employee ID</Text>
+                <Text style={styles.label}>Mobile Number</Text>
                 <View style={styles.inputWrapper}>
-                  <Briefcase color="#94a3b8" size={20} style={styles.inputIcon} />
+                  <Phone color="#94a3b8" size={20} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
-                    placeholder="BH-12345"
-                    value={employeeId}
-                    onChangeText={setEmployeeId}
-                    autoCapitalize="characters"
+                    placeholder="0771234567"
+                    value={mobileNo}
+                    onChangeText={setMobileNo}
+                    keyboardType="phone-pad"
                   />
+                </View>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Assigned Hotel</Text>
+                <View style={[styles.inputWrapper, { paddingHorizontal: 0, overflow: 'hidden' }]}>
+                  <Building color="#94a3b8" size={20} style={[styles.inputIcon, { marginLeft: 16 }]} />
+                  <Picker
+                    selectedValue={hotelId}
+                    onValueChange={(itemValue) => setHotelId(itemValue)}
+                    style={{ flex: 1, backgroundColor: 'transparent' }}
+                  >
+                    {HOTELS.map((hotel) => (
+                      <Picker.Item key={hotel.id} label={`${hotel.name} - ${hotel.city}`} value={hotel.id} />
+                    ))}
+                  </Picker>
                 </View>
               </View>
 
@@ -91,11 +150,18 @@ export default function RegisterScreen() {
               </View>
 
               <TouchableOpacity 
-                style={styles.registerButton}
-                onPress={() => router.replace("/(tabs)/dashboard")}
+                style={[styles.registerButton, loading && { opacity: 0.7 }]}
+                onPress={handleRegister}
+                disabled={loading}
               >
-                <Text style={styles.registerButtonText}>Register Now</Text>
-                <ArrowRight color="white" size={20} />
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Text style={styles.registerButtonText}>Register Now</Text>
+                    <ArrowRight color="white" size={20} />
+                  </>
+                )}
               </TouchableOpacity>
             </View>
 

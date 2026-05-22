@@ -1,25 +1,87 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Mail, ArrowLeft, Send, CheckCircle2 } from "lucide-react-native";
+import { Mail, ArrowLeft, Send, Lock, KeyRound } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import apiClient from "../../src/services/api";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
 
-  const handleReset = () => {
-    if (!email.trim()) return;
+  const showAlert = (title: string, message: string, onSuccess?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+      if (onSuccess) onSuccess();
+    } else {
+      const { Alert } = require('react-native');
+      Alert.alert(title, message, onSuccess ? [{ text: "OK", onPress: onSuccess }] : undefined);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    if (!email.trim()) {
+      showAlert("Error", "Please enter your email address");
+      return;
+    }
     
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const response = await apiClient.post("/auth/forgot-password", {
+        usernameOrEmail: email.trim()
+      });
+      if (response.data.success || response.status === 200) {
+        setIsSent(true);
+        showAlert("OTP Sent", "Please check your email for the OTP.");
+      } else {
+        showAlert("Error", response.data.message || "Failed to send OTP");
+      }
+    } catch (error: any) {
+      console.error(error);
+      showAlert("Error", error.response?.data?.message || "Failed to connect to the server");
+    } finally {
       setIsLoading(false);
-      setIsSent(true);
-    }, 2000);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!otp || !newPassword || !confirmPassword) {
+      showAlert("Error", "Please fill in all fields");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showAlert("Error", "Passwords do not match");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await apiClient.post("/auth/reset-forgotten-password", {
+        usernameOrEmail: email.trim(),
+        otp: otp,
+        newPassword: newPassword,
+        confirmPassword: confirmPassword
+      });
+
+      if (response.data.success || response.status === 200) {
+        showAlert("Success", "Your password has been successfully reset!", () => {
+          router.replace("/auth/login");
+        });
+      } else {
+        showAlert("Error", response.data.message || "Failed to reset password");
+      }
+    } catch (error: any) {
+      console.error(error);
+      showAlert("Error", error.response?.data?.message || error.response?.data || "Failed to reset password");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -36,12 +98,12 @@ export default function ForgotPasswordScreen() {
           <ArrowLeft color="#1B428A" size={28} />
         </TouchableOpacity>
 
-        <View style={styles.content}>
+        <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
           {!isSent ? (
             <>
               <View style={styles.header}>
                 <Text style={styles.title}>Reset Password</Text>
-                <Text style={styles.subtitle}>Enter your email address and we'll send you a link to reset your password.</Text>
+                <Text style={styles.subtitle}>Enter your email address and we'll send you an OTP to reset your password.</Text>
               </View>
 
               <View style={styles.form}>
@@ -62,14 +124,14 @@ export default function ForgotPasswordScreen() {
 
                 <TouchableOpacity 
                   style={[styles.resetButton, !email.trim() && styles.disabledBtn]}
-                  onPress={handleReset}
+                  onPress={handleSendOtp}
                   disabled={isLoading || !email.trim()}
                 >
                   {isLoading ? (
                     <ActivityIndicator color="white" />
                   ) : (
                     <>
-                      <Text style={styles.resetButtonText}>Send Reset Link</Text>
+                      <Text style={styles.resetButtonText}>Send OTP</Text>
                       <Send color="white" size={20} />
                     </>
                   )}
@@ -77,30 +139,82 @@ export default function ForgotPasswordScreen() {
               </View>
             </>
           ) : (
-            <View style={styles.successContainer}>
-              <View style={styles.successIcon}>
-                <CheckCircle2 color="#10b981" size={80} />
+            <>
+              <View style={styles.header}>
+                <Text style={styles.title}>Enter Details</Text>
+                <Text style={styles.subtitle}>We've sent an OTP to {email}. Enter it below to create a new password.</Text>
               </View>
-              <Text style={styles.successTitle}>Check Your Email</Text>
-              <Text style={styles.successSubtitle}>
-                We've sent a password reset link to {email}. Please check your inbox and follow the instructions.
-              </Text>
-              <TouchableOpacity 
-                style={styles.loginButton}
-                onPress={() => router.replace("/auth/login")}
-              >
-                <Text style={styles.loginButtonText}>Back to Login</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.resendBtn}
-                onPress={() => setIsSent(false)}
-              >
-                <Text style={styles.resendText}>Didn't receive the email? Try again</Text>
-              </TouchableOpacity>
-            </View>
+
+              <View style={styles.form}>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>OTP Code</Text>
+                  <View style={styles.inputWrapper}>
+                    <KeyRound color="#94a3b8" size={20} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="123456"
+                      value={otp}
+                      onChangeText={setOtp}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>New Password</Text>
+                  <View style={styles.inputWrapper}>
+                    <Lock color="#94a3b8" size={20} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      secureTextEntry
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Confirm Password</Text>
+                  <View style={styles.inputWrapper}>
+                    <Lock color="#94a3b8" size={20} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.loginButton}
+                  onPress={handleResetPassword}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text style={styles.loginButtonText}>Reset Password</Text>
+                  )}
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.resendBtn}
+                  onPress={() => {
+                    setIsSent(false);
+                    setOtp("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }}
+                >
+                  <Text style={styles.resendText}>Didn't receive the email? Try again</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           )}
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -121,10 +235,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 30,
-    paddingTop: 20,
+    paddingTop: 10,
   },
   header: {
-    marginBottom: 40,
+    marginBottom: 30,
   },
   title: {
     fontSize: 32,
@@ -138,7 +252,8 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   form: {
-    gap: 24,
+    gap: 20,
+    paddingBottom: 40,
   },
   inputContainer: {
     gap: 8,
@@ -192,34 +307,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
-  successContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingBottom: 80,
-  },
-  successIcon: {
-    width: 120,
-    height: 120,
-    backgroundColor: "#f0fdf4",
-    borderRadius: 60,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 32,
-  },
-  successTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#1B428A",
-    marginBottom: 16,
-  },
-  successSubtitle: {
-    fontSize: 16,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 40,
-  },
   loginButton: {
     backgroundColor: "#1B428A",
     width: "100%",
@@ -232,6 +319,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+    marginTop: 10,
   },
   loginButtonText: {
     color: "white",
@@ -239,7 +327,8 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   resendBtn: {
-    marginTop: 24,
+    marginTop: 15,
+    alignItems: "center",
   },
   resendText: {
     color: "#C5A059",

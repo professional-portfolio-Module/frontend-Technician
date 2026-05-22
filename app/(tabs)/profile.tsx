@@ -1,9 +1,11 @@
-import React from "react";
-import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, Platform, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { User, Settings, LogOut, Shield, HelpCircle, ChevronRight, LucideIcon, Languages } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
+import { useRouter } from "expo-router";
 import i18n from "../../i18n";
+import apiClient from "../../src/services/api";
 
 interface ProfileItemProps {
   icon: LucideIcon;
@@ -26,10 +28,59 @@ const ProfileItem = ({ icon: Icon, title, color = "#64748b", isLast = false }: P
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [userName, setUserName] = useState("Loading...");
+
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        const response = await apiClient.get("/auth/session");
+        if (response.data.success && response.data.data?.user_name) {
+          setUserName(response.data.data.user_name);
+        } else {
+          setUserName("Technician");
+        }
+      } catch (error) {
+        console.error("Failed to fetch session:", error);
+        setUserName("Technician");
+      }
+    };
+    fetchSession();
+  }, []);
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
   };
+
+  const showAlert = (title: string, message: string, onSuccess?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+      if (onSuccess) onSuccess();
+    } else {
+      const { Alert } = require('react-native');
+      Alert.alert(title, message, onSuccess ? [{ text: "OK", onPress: onSuccess }] : undefined);
+    }
+  };
+
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      const response = await apiClient.post("/auth/logout");
+      if (response.data.success) {
+        router.replace("/auth/login");
+      } else {
+        showAlert("Logout Failed", response.data.message || "Failed to logout");
+        router.replace("/auth/login");
+      }
+    } catch (error: any) {
+      console.error("Logout Error:", error);
+      router.replace("/auth/login");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -48,7 +99,7 @@ export default function ProfileScreen() {
             />
             <View style={styles.statusDot} />
           </View>
-          <Text style={styles.name}>Nimash Manawadu</Text>
+          <Text style={styles.name}>{userName}</Text>
           <Text style={styles.role}>Senior HVAC Technician</Text>
           
           <View style={styles.statsRow}>
@@ -102,9 +153,19 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.logoutBtn}>
-          <LogOut color="#ef4444" size={20} />
-          <Text style={styles.logoutText}>{t("logout")}</Text>
+        <TouchableOpacity 
+          style={[styles.logoutBtn, loading && { opacity: 0.7 }]}
+          onPress={handleLogout}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#ef4444" />
+          ) : (
+            <>
+              <LogOut color="#ef4444" size={20} />
+              <Text style={styles.logoutText}>{t("logout")}</Text>
+            </>
+          )}
         </TouchableOpacity>
         
         <View style={{ height: 100 }} />

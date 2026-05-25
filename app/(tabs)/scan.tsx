@@ -64,9 +64,25 @@ export default function ScanScreen() {
 
   const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
     setScanned(true);
-    // Simulate finding a machine ID from the QR code
-    // For demo, we'll navigate to MCH-7829
-    router.push(`/machine/MCH-7829`);
+    
+    // Extract machine ID from the QR code data
+    let machineId = data;
+    try {
+      if (data.includes('/api/qr/scan/')) {
+        const parts = data.split('/api/qr/scan/');
+        if (parts.length > 1) {
+          machineId = decodeURIComponent(parts[1].split(/[?#]/)[0]);
+        }
+      } else if (data.startsWith('http')) {
+        const url = new URL(data);
+        const pathParts = url.pathname.split('/');
+        machineId = decodeURIComponent(pathParts[pathParts.length - 1]);
+      }
+    } catch (e) {
+      console.warn("Failed to parse QR URL, using raw data", e);
+    }
+
+    router.push(`/machine/${machineId}`);
     
     setTimeout(() => setScanned(false), 2000);
   };

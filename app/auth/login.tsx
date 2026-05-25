@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Mail, Lock, ArrowRight, ChevronLeft, UserCircle2 } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from "../../src/services/api";
 
 export default function LoginScreen() {
@@ -29,13 +30,22 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
-      const response = await apiClient.post("/auth/login", {
+      const response = await apiClient.post("/AuthForward/auth/login", {
         usernameOrEmail: email.trim(),
         password: password
       });
 
       if (response.data.success || response.status === 200) {
-        // Success! User is authenticated and cookies are set.
+        // Extract token depending on flat vs nested 'authData' structure
+        const responseData = response.data.data || {};
+        const authData = responseData.authData || responseData;
+        const accessToken = authData.access_token;
+        
+        if (accessToken) {
+          await AsyncStorage.setItem('authToken', accessToken);
+        }
+
+        // Success! User is authenticated and token/cookies are set.
         router.replace("/(tabs)/dashboard");
       } else {
         showAlert("Login Failed", response.data.message || "Invalid credentials");

@@ -1,4 +1,5 @@
 import axios from "axios";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base URL for the BFF API
 // Expo Web defaults to localhost:8081 but uses the same origin when served.
@@ -12,6 +13,18 @@ export const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const token = await AsyncStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } catch (error) {
+    console.error("Error reading token", error);
+  }
+  return config;
 });
 
 export default apiClient;

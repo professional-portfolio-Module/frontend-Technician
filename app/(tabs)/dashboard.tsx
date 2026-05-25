@@ -1,15 +1,34 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode, HelpCircle, ArrowRight } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
+import apiClient from "../../src/services/api";
 
 const { width } = Dimensions.get("window");
 
 export default function Dashboard() {
   const router = useRouter();
   const { t } = useTranslation();
+  const [userName, setUserName] = useState("Loading...");
+
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        const response = await apiClient.get("/auth/session");
+        if (response.data.success && response.data.data?.user_name) {
+          setUserName(response.data.data.user_name);
+        } else {
+          setUserName("Technician");
+        }
+      } catch (error) {
+        console.error("Failed to fetch session:", error);
+        setUserName("Technician");
+      }
+    };
+    fetchSession();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -18,7 +37,7 @@ export default function Dashboard() {
         <View style={styles.header}>
           <View>
             <Text style={styles.welcomeText}>{t("welcome")},</Text>
-            <Text style={styles.userName}>Technician #42</Text>
+            <Text style={styles.userName}>{userName}</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 

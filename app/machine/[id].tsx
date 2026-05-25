@@ -7,8 +7,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
+import apiClient from "../../src/services/api";
 
-// Mock Machine Data
+// Fallback Mock Machine Data in case API fails
 const MOCK_MACHINES: Record<string, any> = {
   "MCH-7829": {
     id: "MCH-7829",
@@ -30,15 +31,51 @@ export default function MachineProfile() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { t } = useTranslation();
-  const [machine, setMachine] = useState(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+  const [machine, setMachine] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState(true);
+  const [isFetching, setIsFetching] = useState(true);
   const [isNear, setIsNear] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
 
   useEffect(() => {
     checkProximity();
-  }, []);
+    fetchMachineDetails();
+  }, [id]);
+
+  const fetchMachineDetails = async () => {
+    try {
+      setIsFetching(true);
+      const res = await apiClient.get(`/Main/router-backend/api/equipment?search=${id}`);
+      if (res.data && res.data.success && res.data.data.items.length > 0) {
+        const data = res.data.data.items.find((m: any) => m.card_no === id) || res.data.data.items[0];
+        setMachine({
+          id: data.card_no,
+          name: data.description || "Unknown Asset",
+          type: data.category_name || "Unknown Category",
+          location: data.location || "Location not set",
+          coordinates: { latitude: 0, longitude: 0 },
+          lastService: data.installation_date ? new Date(data.installation_date).toLocaleDateString() : "Unknown",
+          status: data.status || "not checked yet",
+          dbId: data.id,
+          specs: {
+            model: data.category_code || "N/A",
+            capacity: "N/A",
+            refrigerant: "N/A"
+          }
+        });
+      } else {
+        // Fallback to mock data if API fails to find it (for demo purposes)
+        setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch machine details:", error);
+      // Fallback
+      setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+    } finally {
+      setIsFetching(false);
+    }
+  };
 
   const checkProximity = async () => {
     try {
@@ -106,11 +143,13 @@ export default function MachineProfile() {
     }, 1500);
   };
 
-  if (isVerifying) {
+  if (isVerifying || isFetching || !machine) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1B428A" />
-        <Text style={styles.loadingText}>Verifying proximity...</Text>
+        <Text style={styles.loadingText}>
+          {isFetching ? "Fetching asset details..." : "Verifying proximity..."}
+        </Text>
       </View>
     );
   }

@@ -36,7 +36,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        const response = await apiClient.get("/AuthForward/auth/session");
+        const response = await apiClient.get("/auth/session");
         if (response.data.success && response.data.data?.user_name) {
           setUserName(response.data.data.user_name);
         } else {

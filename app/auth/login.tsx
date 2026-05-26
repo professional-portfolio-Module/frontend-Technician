@@ -48,11 +48,11 @@ export default function LoginScreen() {
         // Success! User is authenticated and token/cookies are set.
         router.replace("/(tabs)/dashboard");
       } else {
-        showAlert("Login Failed", response.data.message || "Invalid credentials");
+        showAlert("Login Failed", "invalid credencials");
       }
     } catch (error: any) {
       console.error(error);
-      showAlert("Error", error.response?.data?.message || "Invalid credentials or server error");
+      showAlert("Error", "invalid credencials");
     } finally {
       setIsLoading(false);
     }

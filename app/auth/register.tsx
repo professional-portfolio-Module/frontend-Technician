@@ -1,12 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Mail, Lock, User, Phone, ChevronLeft, ArrowRight, Building } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import { Picker } from "@react-native-picker/picker";
-import { HOTELS } from "../../src/constants/hotels";
 import apiClient from "../../src/services/api";
+
+interface Hotel {
+  id: string;
+  name: string;
+  city: string;
+}
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -14,8 +19,29 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [mobileNo, setMobileNo] = useState("");
   const [password, setPassword] = useState("");
-  const [hotelId, setHotelId] = useState(HOTELS[0].id);
+  const [hotelId, setHotelId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hotels, setHotels] = useState<Hotel[]>([]);
+  const [hotelsLoading, setHotelsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHotels = async () => {
+      try {
+        const res = await apiClient.get("/Main/router-backend/api/hotels");
+        if (res.data?.success && res.data.data) {
+          setHotels(res.data.data);
+          if (res.data.data.length > 0) {
+            setHotelId(res.data.data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch hotels:", err);
+      } finally {
+        setHotelsLoading(false);
+      }
+    };
+    fetchHotels();
+  }, []);
 
   const showAlert = (title: string, message: string, onSuccess?: () => void) => {
     if (Platform.OS === 'web') {
@@ -34,7 +60,7 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post("/auth/sign-up", {
+      const response = await apiClient.post("/AuthForward/auth/sign-up", {
         userName: fullName,
         userEmail: email,
         userMobileNo: mobileNo,
@@ -127,10 +153,17 @@ export default function RegisterScreen() {
                     selectedValue={hotelId}
                     onValueChange={(itemValue) => setHotelId(itemValue)}
                     style={{ flex: 1, backgroundColor: 'transparent' }}
+                    enabled={!hotelsLoading}
                   >
-                    {HOTELS.map((hotel) => (
-                      <Picker.Item key={hotel.id} label={`${hotel.name} - ${hotel.city}`} value={hotel.id} />
-                    ))}
+                    {hotelsLoading ? (
+                      <Picker.Item label="Loading hotels..." value="" />
+                    ) : hotels.length === 0 ? (
+                      <Picker.Item label="No hotels available" value="" />
+                    ) : (
+                      hotels.map((hotel) => (
+                        <Picker.Item key={hotel.id} label={`${hotel.name} - ${hotel.city || 'N/A'}`} value={hotel.id} />
+                      ))
+                    )}
                   </Picker>
                 </View>
               </View>

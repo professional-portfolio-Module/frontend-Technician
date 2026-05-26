@@ -34,7 +34,7 @@ export default function VerifyOtpScreen() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post("/auth/verify-otp", {
+      const response = await apiClient.post("/AuthForward/auth/verify-otp", {
         usernameOrEmail: email,
         otp: otp,
       });
@@ -54,7 +54,7 @@ export default function VerifyOtpScreen() {
   const handleResend = async () => {
     setResendLoading(true);
     try {
-      const response = await apiClient.post("/auth/resend-otp", {
+      const response = await apiClient.post("/AuthForward/auth/resend-otp", {
         usernameOrEmail: email,
       });
 

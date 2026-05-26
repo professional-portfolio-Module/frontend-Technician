@@ -5,6 +5,7 @@ import { User, Settings, LogOut, Shield, HelpCircle, ChevronRight, LucideIcon, L
 import { useTranslation } from "react-i18next";
 import { useRouter } from "expo-router";
 import i18n from "../../i18n";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from "../../src/services/api";
 
 interface ProfileItemProps {
@@ -35,7 +36,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        const response = await apiClient.get("/auth/session");
+        const response = await apiClient.get("/AuthForward/auth/session");
         if (response.data.success && response.data.data?.user_name) {
           setUserName(response.data.data.user_name);
         } else {
@@ -66,18 +67,14 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.post("/auth/logout");
-      if (response.data.success) {
-        router.replace("/auth/login");
-      } else {
-        showAlert("Logout Failed", response.data.message || "Failed to logout");
-        router.replace("/auth/login");
-      }
+      await apiClient.post("/AuthForward/auth/logout");
     } catch (error: any) {
       console.error("Logout Error:", error);
-      router.replace("/auth/login");
     } finally {
+      // Always clear token and redirect, even if server call fails
+      await AsyncStorage.removeItem('authToken');
       setLoading(false);
+      router.replace("/auth/login");
     }
   };
 

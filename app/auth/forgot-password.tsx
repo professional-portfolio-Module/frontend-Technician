@@ -33,7 +33,7 @@ export default function ForgotPasswordScreen() {
     
     setIsLoading(true);
     try {
-      const response = await apiClient.post("/auth/forgot-password", {
+      const response = await apiClient.post("/AuthForward/auth/forgot-password", {
         usernameOrEmail: email.trim()
       });
       if (response.data.success || response.status === 200) {
@@ -62,7 +62,7 @@ export default function ForgotPasswordScreen() {
 
     setIsLoading(true);
     try {
-      const response = await apiClient.post("/auth/reset-forgotten-password", {
+      const response = await apiClient.post("/AuthForward/auth/reset-forgotten-password", {
         usernameOrEmail: email.trim(),
         otp: otp,
         newPassword: newPassword,

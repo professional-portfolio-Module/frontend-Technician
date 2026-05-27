@@ -40,7 +40,30 @@ export default function LoginScreen() {
         const responseData = response.data.data || {};
         const authData = responseData.authData || responseData;
         const accessToken = authData.access_token;
-        
+        const username = authData.user_name;
+
+        // Fetch user profile to check role
+        try {
+          const userProfileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`, {
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+          });
+
+          if (userProfileRes.data.success) {
+            const userData = userProfileRes.data.data;
+            const role = userData.role ? userData.role.toLowerCase() : "";
+            if (role !== "technician" && role !== "engineer") {
+              showAlert("Access Denied", "Only Technicians and Engineers can access the mobile application.");
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch (profileErr) {
+          console.error("Failed to verify user role:", profileErr);
+          showAlert("Access Denied", "Unable to verify account permissions.");
+          setIsLoading(false);
+          return;
+        }
+
         if (accessToken) {
           await AsyncStorage.setItem('authToken', accessToken);
         }

@@ -1,50 +1,85 @@
-import React from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ViewStyle } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ViewStyle, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ChevronLeft, Bell, AlertTriangle, CheckCircle2, ClipboardList, Clock } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import apiClient from "../src/services/api";
 
-const MOCK_NOTIFICATIONS = [
-  {
-    id: "1",
-    type: "urgent",
-    title: "Critical Alert: Chiller 04",
-    message: "Temperature exceeded threshold in Server Room B.",
-    time: "5m ago",
-    unread: true,
-  },
-  {
-    id: "2",
-    type: "job",
-    title: "New Job Assigned",
-    message: "You have been assigned to: Electrical Panel Review - Floor 2.",
-    time: "1h ago",
-    unread: true,
-  },
-  {
-    id: "3",
-    type: "status",
-    title: "Check Completed",
-    message: "Manager John Miller approved your check for HVAC Unit 01.",
-    time: "Yesterday",
-    unread: false,
-  },
-  {
-    id: "4",
-    type: "update",
-    title: "Schedule Update",
-    message: "Tomorrow's maintenance window has been moved to 10:00 AM.",
-    time: "Yesterday",
-    unread: false,
+const formatRelativeTime = (dateStr: string) => {
+  if (!dateStr) return "";
+  try {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    
+    // Fallback for future dates or slight clock drift
+    if (diffMs < 0) return "Just now";
+    
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch (e) {
+    return "";
   }
-];
+};
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const fetchNotifications = async () => {
+    try {
+      setIsLoading(true);
+      // 1. Get session to find username/email
+      const sessionRes = await apiClient.get("/auth/session");
+      if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+        const username = sessionRes.data.data.user_name;
+        // 2. Get user profile to get UUID id
+        const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+        if (profileRes.data.success && profileRes.data.data?.id) {
+          const uid = profileRes.data.data.id;
+          setUserId(uid);
+          // 3. Fetch notifications from backend proxied through BFF
+          const notificationsRes = await apiClient.get(`/Main/router-backend/api/notifications?userId=${uid}`);
+          if (notificationsRes.data.success) {
+            setNotifications(notificationsRes.data.data);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const getUiType = (type: string) => {
+    switch (type) {
+      case "task_assigned": return "job";
+      case "task_completed": return "status";
+      case "maintenance_due":
+      case "task_expired": return "urgent";
+      default: return "system";
+    }
+  };
 
   const getIcon = (type: string) => {
-    switch (type) {
+    const uiType = getUiType(type);
+    switch (uiType) {
       case "urgent": return <AlertTriangle color="#ef4444" size={22} />;
       case "job": return <ClipboardList color="#1B428A" size={22} />;
       case "status": return <CheckCircle2 color="#10b981" size={22} />;
@@ -52,24 +87,57 @@ export default function NotificationsScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: typeof MOCK_NOTIFICATIONS[0] }) => (
-    <TouchableOpacity style={[styles.notificationCard, item.unread && styles.unreadCard]}>
-      <View style={[styles.iconContainer, styles[`${item.type}Icon` as keyof typeof styles] as ViewStyle]}>
-        {getIcon(item.type)}
-      </View>
-      <View style={styles.content}>
-        <View style={styles.cardHeader}>
-          <Text style={[styles.title, item.unread && styles.unreadTitle]}>{item.title}</Text>
-          {item.unread && <View style={styles.unreadDot} />}
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      // Optimistically update local UI state
+      setNotifications(prev =>
+        prev.map(n => (n.id === id ? { ...n, read: true } : n))
+      );
+      // API call to backend
+      await apiClient.patch(`/Main/router-backend/api/notifications/${id}/read`);
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!userId) return;
+    try {
+      // Optimistically update local UI state
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      // API call to backend
+      await apiClient.patch(`/Main/router-backend/api/notifications/read-all`, { userId });
+    } catch (err) {
+      console.error("Failed to mark all notifications as read:", err);
+    }
+  };
+
+  const renderItem = ({ item }: { item: any }) => {
+    const uiType = getUiType(item.notification_type);
+    const isUnread = !item.read;
+
+    return (
+      <TouchableOpacity 
+        style={[styles.notificationCard, isUnread && styles.unreadCard]}
+        onPress={() => isUnread && handleMarkAsRead(item.id)}
+      >
+        <View style={[styles.iconContainer, styles[`${uiType}Icon` as keyof typeof styles] as ViewStyle]}>
+          {getIcon(item.notification_type)}
         </View>
-        <Text style={styles.message} numberOfLines={2}>{item.message}</Text>
-        <View style={styles.timeRow}>
-          <Clock color="#94a3b8" size={12} />
-          <Text style={styles.timeText}>{item.time}</Text>
+        <View style={styles.content}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.title, isUnread && styles.unreadTitle]}>{item.title}</Text>
+            {isUnread && <View style={styles.unreadDot} />}
+          </View>
+          <Text style={styles.message} numberOfLines={2}>{item.content}</Text>
+          <View style={styles.timeRow}>
+            <Clock color="#94a3b8" size={12} />
+            <Text style={styles.timeText}>{formatRelativeTime(item.created_at)}</Text>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -79,24 +147,30 @@ export default function NotificationsScreen() {
           <ChevronLeft color="#1B428A" size={28} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={handleMarkAllRead}>
           <Text style={styles.markAllText}>Mark all read</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={MOCK_NOTIFICATIONS}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Bell color="#cbd5e1" size={60} />
-            <Text style={styles.emptyText}>No notifications yet</Text>
-          </View>
-        }
-      />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#1B428A" />
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Bell color="#cbd5e1" size={60} />
+              <Text style={styles.emptyText}>No notifications yet</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -105,6 +179,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8fafc",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   header: {
     flexDirection: "row",
@@ -159,7 +238,7 @@ const styles = StyleSheet.create({
   urgentIcon: { backgroundColor: "#fef2f2" },
   jobIcon: { backgroundColor: "#f0f7ff" },
   statusIcon: { backgroundColor: "#f0fdf4" },
-  updateIcon: { backgroundColor: "rgba(197, 160, 89, 0.05)" },
+  systemIcon: { backgroundColor: "rgba(197, 160, 89, 0.05)" },
   content: {
     flex: 1,
   },

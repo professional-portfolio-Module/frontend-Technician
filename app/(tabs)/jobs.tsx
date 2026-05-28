@@ -1,62 +1,204 @@
-import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Search, Filter, Clock, MapPin, ChevronRight } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { Search, Filter, Clock, MapPin, ChevronRight, AlertTriangle, CheckCircle2, Info, Calendar } from "lucide-react-native";
+import apiClient from "../../src/services/api";
 
 export default function JobsScreen() {
-  const jobs = [
-    { id: "1", title: "HVAC System Repair", location: "Building A, Floor 4", time: "Today, 4:00 PM", priority: "High" },
-    { id: "2", title: "Electrical Panel Check", location: "Sector 02", time: "Tomorrow, 10:00 AM", priority: "Medium" },
-    { id: "3", title: "Water Leak Inspection", location: "Basement B2", time: "Monday, 2:00 PM", priority: "Low" },
-    { id: "4", title: "CCTV Maintenance", location: "Parking Lot", time: "Monday, 5:00 PM", priority: "Medium" },
-  ];
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [userRole, setUserRole] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
+
+  const fetchTasks = async (showLoadingIndicator = true) => {
+    if (showLoadingIndicator) setLoading(true);
+    try {
+      // 1. Fetch user session and profile to get role and hotelId
+      const sessionRes = await apiClient.get("/auth/session");
+      if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+        const username = sessionRes.data.data.user_name;
+        const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+        if (profileRes.data.success && profileRes.data.data) {
+          const userData = profileRes.data.data;
+          const role = userData.role ? userData.role.toLowerCase() : "";
+          const uid = userData.id;
+          const hotels = userData.hotels || [];
+          const hotelId = hotels[0]?.id;
+          
+          setUserRole(role);
+          setUserId(uid);
+
+          if (hotelId) {
+            // 2. Fetch all scheduled tasks for this hotel
+            const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
+            if (tasksRes.data?.success && tasksRes.data.data) {
+              let allTasks = tasksRes.data.data;
+              
+              // 3. Role-based filtering
+              if (role === 'technician') {
+                // Technicians see only tasks where they are one of the assigned technicians
+                allTasks = allTasks.filter((t: any) => 
+                  t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
+                );
+              } else if (role === 'engineer') {
+                // Engineers see ONLY tasks with priority === 'emergency'
+                allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
+              }
+              setTasks(allTasks);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load tasks:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchTasks(false);
+  };
+
+  // Filter tasks by search query
+  const filteredTasks = tasks.filter((task) => {
+    const query = searchQuery.toLowerCase();
+    const title = (task.schedule_title || "").toLowerCase();
+    const desc = (task.asset_description || "").toLowerCase();
+    const cardNo = (task.asset_card_no || "").toLowerCase();
+    const loc = (task.asset_location || "").toLowerCase();
+    return title.includes(query) || desc.includes(query) || cardNo.includes(query) || loc.includes(query);
+  });
+
+  const getStatusStyle = (status: string) => {
+    switch (status) {
+      case "pending":
+        return { bg: "rgba(100, 116, 139, 0.1)", text: "#64748b" };
+      case "in-progress":
+        return { bg: "rgba(59, 130, 246, 0.1)", text: "#3b82f6" };
+      case "under_review":
+        return { bg: "rgba(245, 158, 11, 0.1)", text: "#f59e0b" };
+      case "completed":
+        return { bg: "rgba(16, 185, 129, 0.1)", text: "#10b981" };
+      case "rejected":
+        return { bg: "rgba(239, 68, 68, 0.1)", text: "#ef4444" };
+      case "expired":
+        return { bg: "rgba(220, 38, 38, 0.15)", text: "#dc2626" };
+      default:
+        return { bg: "rgba(100, 116, 139, 0.1)", text: "#64748b" };
+    }
+  };
+
+  const getPriorityStyle = (priority: string) => {
+    if (priority === "emergency") {
+      return { bg: "rgba(239, 68, 68, 0.1)", text: "#ef4444" };
+    }
+    return { bg: "rgba(27, 66, 138, 0.1)", text: "#1B428A" };
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Schedule</Text>
-        <TouchableOpacity style={styles.filterBtn}>
+        <TouchableOpacity style={styles.filterBtn} onPress={() => fetchTasks(true)}>
           <Filter color="#1B428A" size={20} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.searchBar}>
         <Search color="#C5A059" size={20} />
-        <Text style={styles.searchText}>Search for jobs or locations...</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by title, description, or card no..."
+          placeholderTextColor="#94a3b8"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {jobs.map((job) => (
-          <TouchableOpacity key={job.id} style={styles.jobCard}>
-            <View style={styles.jobInfo}>
-              <Text style={styles.jobTitle}>{job.title}</Text>
-              <View style={styles.detailRow}>
-                <MapPin color="#C5A059" size={14} />
-                <Text style={styles.detailText}>{job.location}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Clock color="#C5A059" size={14} />
-                <Text style={styles.detailText}>{job.time}</Text>
-              </View>
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#1B428A" />
+          <Text style={styles.loadingText}>Fetching tasks...</Text>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.scroll} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#1B428A"]} />
+          }
+        >
+          {filteredTasks.length > 0 ? (
+            filteredTasks.map((task) => {
+              const statusStyle = getStatusStyle(task.status);
+              const priorityStyle = getPriorityStyle(task.priority);
+              return (
+                <TouchableOpacity 
+                  key={task.task_id} 
+                  style={styles.jobCard}
+                  onPress={() => router.push(`/machine/${task.asset_card_no}`)}
+                >
+                  <View style={styles.jobInfo}>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.jobTitle} numberOfLines={1}>{task.schedule_title}</Text>
+                      <View style={[styles.priorityBadge, { backgroundColor: priorityStyle.bg }]}>
+                        <Text style={[styles.priorityText, { color: priorityStyle.text }]}>{task.priority}</Text>
+                      </View>
+                    </View>
+                    
+                    <Text style={styles.assetDesc} numberOfLines={1}>
+                      {task.asset_description || "Unknown Asset"}
+                    </Text>
+
+                    <View style={styles.detailRow}>
+                      <MapPin color="#C5A059" size={14} />
+                      <Text style={styles.detailText}>{task.asset_location || "Location not set"}</Text>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <Calendar color="#C5A059" size={14} />
+                      <Text style={styles.detailText}>
+                        Due: {task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/A"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.cardRight}>
+                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                      <Text style={[styles.statusText, { color: statusStyle.text }]}>
+                        {task.status.replace("_", " ")}
+                      </Text>
+                    </View>
+                    <ChevronRight color="#cbd5e1" size={20} />
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <View style={styles.noTaskBox}>
+              <Info color="#64748b" size={32} style={styles.noTaskIcon} />
+              <Text style={styles.noTaskTitle}>No Maintenance Tasks Found</Text>
+              <Text style={styles.noTaskText}>
+                {userRole === "engineer" 
+                  ? "There are no pending emergency tasks for review at this hotel."
+                  : "You do not have any active or pending maintenance tasks assigned to you."}
+              </Text>
             </View>
-            <View style={styles.cardRight}>
-              <View style={[
-                styles.priorityBadge, 
-                job.priority === "High" ? styles.highPriority : 
-                job.priority === "Medium" ? styles.medPriority : styles.lowPriority
-              ]}>
-                <Text style={[
-                  styles.priorityText,
-                  job.priority === "High" ? styles.highPriorityText : 
-                  job.priority === "Medium" ? styles.medPriorityText : styles.lowPriorityText
-                ]}>{job.priority}</Text>
-              </View>
-              <ChevronRight color="#cbd5e1" size={20} />
-            </View>
-          </TouchableOpacity>
-        ))}
-        <View style={{ height: 100 }} />
-      </ScrollView>
+          )}
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -102,12 +244,25 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     gap: 12,
   },
-  searchText: {
-    color: "#94a3b8",
+  searchInput: {
+    flex: 1,
     fontSize: 15,
+    color: "#1e293b",
+    height: "100%",
   },
   scroll: {
     paddingHorizontal: 24,
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: "#64748b",
+    fontSize: 16,
   },
   jobCard: {
     backgroundColor: "white",
@@ -119,15 +274,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    elevation: 2,
+    shadowColor: "#1B428A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
   jobInfo: {
     flex: 1,
+    paddingRight: 8,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
   },
   jobTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "bold",
     color: "#1B428A",
+    maxWidth: "65%",
+  },
+  assetDesc: {
+    fontSize: 14,
+    color: "#475569",
     marginBottom: 8,
+    fontWeight: "500",
   },
   detailRow: {
     flexDirection: "row",
@@ -144,19 +317,50 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  priorityText: {
+    fontSize: 9,
+    fontWeight: "bold",
+    textTransform: "uppercase",
+  },
+  statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  highPriority: { backgroundColor: "rgba(239, 68, 68, 0.1)" },
-  medPriority: { backgroundColor: "rgba(197, 160, 89, 0.1)" },
-  lowPriority: { backgroundColor: "rgba(27, 66, 138, 0.1)" },
-  priorityText: {
-    fontSize: 10,
-    fontWeight: "bold",
-    textTransform: "uppercase",
+  statusText: {
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "capitalize",
   },
-  highPriorityText: { color: "#ef4444" },
-  medPriorityText: { color: "#C5A059" },
-  lowPriorityText: { color: "#1B428A" },
+  noTaskBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white",
+    padding: 32,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginTop: 20,
+    textAlign: "center",
+  },
+  noTaskIcon: {
+    color: "#94a3b8",
+    marginBottom: 16,
+  },
+  noTaskTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1e293b",
+    marginBottom: 8,
+  },
+  noTaskText: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 });

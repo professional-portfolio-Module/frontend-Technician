@@ -8,6 +8,7 @@ import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
 import apiClient from "../../src/services/api";
+import { syncService } from "../../src/services/syncService";
 
 // Fallback Mock Machine Data in case API fails
 const MOCK_MACHINES: Record<string, any> = {
@@ -25,6 +26,29 @@ const MOCK_MACHINES: Record<string, any> = {
       refrigerant: "R134a",
     }
   }
+};
+
+const decodeBase64 = (str: string): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let buffer = '';
+  const cleaned = str.replace(/=+$/, '');
+  for (let i = 0; i < cleaned.length; i += 4) {
+    const encoded1 = chars.indexOf(cleaned[i]);
+    const encoded2 = chars.indexOf(cleaned[i + 1] || 'A');
+    const encoded3 = chars.indexOf(cleaned[i + 2] || 'A');
+    const encoded4 = chars.indexOf(cleaned[i + 3] || 'A');
+
+    const bytes = (encoded1 << 18) | (encoded2 << 12) | (encoded3 << 6) | encoded4;
+
+    const byte1 = (bytes >> 16) & 255;
+    const byte2 = (bytes >> 8) & 255;
+    const byte3 = bytes & 255;
+
+    buffer += String.fromCharCode(byte1);
+    if (cleaned[i + 2]) buffer += String.fromCharCode(byte2);
+    if (cleaned[i + 3]) buffer += String.fromCharCode(byte3);
+  }
+  return buffer;
 };
 
 export default function MachineProfile() {
@@ -63,85 +87,162 @@ export default function MachineProfile() {
             }
           }
         } catch (err) {
-          console.error("Failed to retrieve user ID for task updates:", err);
+          console.warn("Failed to retrieve online session details, using local defaults:", err);
+          userId = currentUserId || "offline-tech-id";
+          role = userRole || "technician";
+          setCurrentUserId(userId);
+          setUserRole(role);
+        }
+
+        let cardNo = id as string;
+
+        // Check if the QR code data encodes offline machine metadata
+        if (cardNo.startsWith("offline_asset:")) {
+          try {
+            const base64Data = cardNo.substring("offline_asset:".length);
+            const decodedJson = decodeBase64(base64Data);
+            const parsed = JSON.parse(decodedJson);
+            
+            cardNo = parsed.card_no;
+            setMachine({
+              id: parsed.card_no,
+              name: parsed.name || "Offline Asset",
+              type: parsed.type || "Asset",
+              location: parsed.location || "Location not set",
+              coordinates: { latitude: 0, longitude: 0 },
+              lastService: "Offline QR Scan",
+              status: parsed.status || "not checked yet",
+              dbId: parsed.card_no,
+              specs: {
+                model: parsed.model || "N/A",
+                capacity: "N/A",
+                refrigerant: "N/A"
+              }
+            });
+
+            // Find scheduled task locally from cached tasks
+            const cachedTasks = await syncService.getCachedTasks();
+            const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
+            if (localTask) {
+              setScheduledTask(localTask);
+              if (role === 'technician') {
+                const hasAssignments = localTask.assigned_technicians && localTask.assigned_technicians.length > 0;
+                const isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                setIsAssignedTech(isAssigned);
+              }
+            } else {
+              setScheduledTask(null);
+            }
+            setIsFetching(false);
+            return;
+          } catch (e) {
+            console.error("Failed to parse offline asset QR metadata:", e);
+          }
         }
 
         // 2. Fetch machine details
-        const res = await apiClient.get(`/Main/router-backend/api/equipment?search=${id}`);
-        let cardNo = id as string;
-        if (res.data && res.data.success && res.data.data.items.length > 0) {
-          const data = res.data.data.items.find((m: any) => m.card_no === id) || res.data.data.items[0];
-          cardNo = data.card_no;
-          setMachine({
-            id: data.card_no,
-            name: data.description || "Unknown Asset",
-            type: data.category_name || "Unknown Category",
-            location: data.location || "Location not set",
-            coordinates: { latitude: 0, longitude: 0 },
-            lastService: data.installation_date ? new Date(data.installation_date).toLocaleDateString() : "Unknown",
-            status: data.status || "not checked yet",
-            dbId: data.id,
-            specs: {
-              model: data.category_code || "N/A",
-              capacity: "N/A",
-              refrigerant: "N/A"
-            }
-          });
-        } else {
-          setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
-        }
-
-        // 3. Fetch the pending scheduled task for this asset
         try {
-          const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
-          if (taskRes.data && taskRes.data.success && taskRes.data.data) {
-            let taskData = taskRes.data.data;
-            
-            // Check technician assignments
-            if (role === 'technician') {
-              const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
-              const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
-              setIsAssignedTech(isAssigned);
+          const res = await apiClient.get(`/Main/router-backend/api/equipment?search=${id}`);
+          if (res.data && res.data.success && res.data.data.items.length > 0) {
+            const data = res.data.data.items.find((m: any) => m.card_no === id) || res.data.data.items[0];
+            cardNo = data.card_no;
+            setMachine({
+              id: data.card_no,
+              name: data.description || "Unknown Asset",
+              type: data.category_name || "Unknown Category",
+              location: data.location || "Location not set",
+              coordinates: { latitude: 0, longitude: 0 },
+              lastService: data.installation_date ? new Date(data.installation_date).toLocaleDateString() : "Unknown",
+              status: data.status || "not checked yet",
+              dbId: data.id,
+              specs: {
+                model: data.category_code || "N/A",
+                capacity: "N/A",
+                refrigerant: "N/A"
+              }
+            });
+          } else {
+            setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+          }
 
-              // Auto transition and record scanner done_by ID
-              if (isAssigned && taskData.status === 'pending') {
+          // 3. Fetch the pending scheduled task for this asset
+          try {
+            const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
+            if (taskRes.data && taskRes.data.success && taskRes.data.data) {
+              let taskData = taskRes.data.data;
+              
+              // Check technician assignments
+              if (role === 'technician') {
+                const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
+                const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                setIsAssignedTech(isAssigned);
+
+                // Auto transition and record scanner done_by ID
+                if (isAssigned && taskData.status === 'pending') {
+                  try {
+                    await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
+                      status: 'in-progress',
+                      done_by: userId
+                    });
+                    taskData.status = 'in-progress';
+                    taskData.done_by = userId;
+                  } catch (e) {
+                    console.error("Auto transition to in-progress failed:", e);
+                  }
+                }
+              } else if (role === 'engineer' && taskData.priority === 'emergency' && taskData.status === 'in-progress') {
                 try {
+                  // Auto transition and record reviewer checked_by ID
                   await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
-                    status: 'in-progress',
-                    done_by: userId
+                    status: 'under_review',
+                    checked_by: userId
                   });
-                  taskData.status = 'in-progress';
-                  taskData.done_by = userId;
+                  taskData.status = 'under_review';
+                  taskData.checked_by = userId;
                 } catch (e) {
-                  console.error("Auto transition to in-progress failed:", e);
+                  console.error("Auto transition to under_review failed:", e);
                 }
               }
-            } else if (role === 'engineer' && taskData.priority === 'emergency' && taskData.status === 'in-progress') {
-              try {
-                // Auto transition and record reviewer checked_by ID
-                await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
-                  status: 'under_review',
-                  checked_by: userId
-                });
-                taskData.status = 'under_review';
-                taskData.checked_by = userId;
-              } catch (e) {
-                console.error("Auto transition to under_review failed:", e);
-              }
+              
+              setScheduledTask(taskData);
+            } else {
+              setScheduledTask(null);
             }
-            
-            setScheduledTask(taskData);
+          } catch (taskErr) {
+            console.error("Failed to fetch pending scheduled task from API:", taskErr);
+            // Local fallback
+            const cachedTasks = await syncService.getCachedTasks();
+            const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
+            setScheduledTask(localTask || null);
+          }
+        } catch (error) {
+          console.warn("Failed to fetch machine details from API, fallback to local cache:", error);
+          const cachedTasks = await syncService.getCachedTasks();
+          const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
+          if (localTask) {
+            setMachine({
+              id: localTask.asset_card_no,
+              name: localTask.asset_description || "Cached Asset",
+              type: "Asset",
+              location: localTask.asset_location || "Location not set",
+              coordinates: { latitude: 0, longitude: 0 },
+              lastService: "Offline Cache",
+              status: localTask.status || "not checked yet",
+              dbId: localTask.asset_card_no,
+              specs: {
+                model: "Cached",
+                capacity: "N/A",
+                refrigerant: "N/A"
+              }
+            });
+            setScheduledTask(localTask);
           } else {
+            setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
             setScheduledTask(null);
           }
-        } catch (taskErr) {
-          console.error("Failed to fetch pending scheduled task:", taskErr);
-          setScheduledTask(null);
         }
-      } catch (error) {
-        console.error("Failed to fetch machine details:", error);
-        setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
-        setScheduledTask(null);
+      } catch (err) {
+        console.error("Fatal initialization error:", err);
       } finally {
         setIsFetching(false);
       }
@@ -269,18 +370,26 @@ export default function MachineProfile() {
         }
       }
 
-      const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+      try {
+        const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
 
-      if (res.data.success) {
-        Alert.alert("Success", `Maintenance task status successfully updated to '${targetStatus}'!`);
+        if (res.data.success) {
+          Alert.alert("Success", `Maintenance task status successfully updated to '${targetStatus}'!`);
+          setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
+          setScheduledTask(null); // Clear active task
+        } else {
+          Alert.alert("Error", "Failed to update task status in database.");
+        }
+      } catch (err) {
+        console.warn("API update failed, queueing mutation offline:", err);
+        await syncService.queueMutation(scheduledTask.task_id, payload);
+        Alert.alert("Offline Sync Queued", "You are currently offline. Your checklist updates have been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
-        setScheduledTask(null); // Clear active task
-      } else {
-        Alert.alert("Error", "Failed to update task status in database.");
+        setScheduledTask(null);
       }
     } catch (error) {
       console.error("Failed to update scheduled task:", error);
-      Alert.alert("Upload Error", "An error occurred while uploading evidence or updating the task.");
+      Alert.alert("Error", "An unexpected error occurred while completing the task.");
     } finally {
       setUpdateLoading(false);
     }
@@ -314,18 +423,26 @@ export default function MachineProfile() {
         done_by: currentUserId
       };
 
-      const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+      try {
+        const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
 
-      if (res.data.success) {
-        Alert.alert("Escalated", "Task successfully escalated to Emergency! Engineers have been notified.");
+        if (res.data.success) {
+          Alert.alert("Escalated", "Task successfully escalated to Emergency! Engineers have been notified.");
+          setMachine({ ...machine, status: "escalated" });
+          setScheduledTask(null);
+        } else {
+          Alert.alert("Error", "Failed to escalate task.");
+        }
+      } catch (err) {
+        console.warn("API escalation failed, queueing mutation offline:", err);
+        await syncService.queueMutation(scheduledTask.task_id, payload);
+        Alert.alert("Offline Sync Queued", "You are currently offline. Your emergency escalation request has been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: "escalated" });
         setScheduledTask(null);
-      } else {
-        Alert.alert("Error", "Failed to escalate task.");
       }
     } catch (error) {
       console.error("Failed to escalate scheduled task:", error);
-      Alert.alert("Error", "An error occurred while escalating the task.");
+      Alert.alert("Error", "An unexpected error occurred while escalating the task.");
     } finally {
       setUpdateLoading(false);
     }

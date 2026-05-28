@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Search, Filter, Clock, MapPin, ChevronRight, AlertTriangle, CheckCircle2, Info, Calendar } from "lucide-react-native";
+import { Search, Filter, Clock, MapPin, ChevronRight, AlertTriangle, CheckCircle2, Info, Calendar, CloudLightning } from "lucide-react-native";
 import apiClient from "../../src/services/api";
+import { syncService } from "../../src/services/syncService";
 
 export default function JobsScreen() {
   const router = useRouter();
@@ -13,9 +14,25 @@ export default function JobsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [userRole, setUserRole] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
   const fetchTasks = async (showLoadingIndicator = true) => {
     if (showLoadingIndicator) setLoading(true);
+
+    // Sync offline queue if we have internet
+    try {
+      const syncResult = await syncService.syncOfflineMutations();
+      if (syncResult.syncedCount > 0) {
+        console.log(`Synced ${syncResult.syncedCount} offline task completions.`);
+      }
+    } catch (e) {
+      console.warn("Offline sync attempt skipped/failed (offline)");
+    }
+
+    // Check queue length
+    const queueLen = await syncService.getQueueLength();
+    setPendingSyncCount(queueLen);
+
     try {
       // 1. Fetch user session and profile to get role and hotelId
       const sessionRes = await apiClient.get("/auth/session");
@@ -38,14 +55,15 @@ export default function JobsScreen() {
             if (tasksRes.data?.success && tasksRes.data.data) {
               let allTasks = tasksRes.data.data;
               
+              // Cache tasks locally
+              await syncService.cacheTasks(allTasks);
+
               // 3. Role-based filtering
               if (role === 'technician') {
-                // Technicians see only tasks where they are one of the assigned technicians
                 allTasks = allTasks.filter((t: any) => 
                   t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
                 );
               } else if (role === 'engineer') {
-                // Engineers see ONLY tasks with priority === 'emergency'
                 allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
               }
               setTasks(allTasks);
@@ -54,7 +72,23 @@ export default function JobsScreen() {
         }
       }
     } catch (err) {
-      console.error("Failed to load tasks:", err);
+      console.warn("Failed to load tasks from API, loading from offline cache instead:", err);
+      // Fallback: load tasks from cache
+      const cachedTasks = await syncService.getCachedTasks();
+      if (cachedTasks && cachedTasks.length > 0) {
+        let allTasks = cachedTasks;
+        // Re-apply role filter using local states if we had them, or filter generally
+        const cachedRole = userRole || "technician"; // fallback default
+        const cachedUid = userId || "";
+        if (cachedRole === 'technician' && cachedUid) {
+          allTasks = allTasks.filter((t: any) => 
+            t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid)
+          );
+        } else if (cachedRole === 'engineer') {
+          allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
+        }
+        setTasks(allTasks);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -125,6 +159,15 @@ export default function JobsScreen() {
           onChangeText={setSearchQuery}
         />
       </View>
+
+      {pendingSyncCount > 0 && (
+        <View style={styles.syncBanner}>
+          <CloudLightning color="#854d0e" size={16} />
+          <Text style={styles.syncBannerText}>
+            {pendingSyncCount} updates pending online sync
+          </Text>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.center}>
@@ -362,5 +405,23 @@ const styles = StyleSheet.create({
     color: "#64748b",
     textAlign: "center",
     lineHeight: 20,
+  },
+  syncBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef9c3",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#fef08a",
+  },
+  syncBannerText: {
+    color: "#854d0e",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

@@ -41,6 +41,7 @@ export default function MachineProfile() {
   const [remarks, setRemarks] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [isAssignedTech, setIsAssignedTech] = useState<boolean>(true);
 
   useEffect(() => {
     const initialize = async () => {
@@ -96,22 +97,34 @@ export default function MachineProfile() {
           if (taskRes.data && taskRes.data.success && taskRes.data.data) {
             let taskData = taskRes.data.data;
             
-            // Auto transitions
-            if (role === 'technician' && taskData.status === 'pending') {
-              try {
-                await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
-                  status: 'in-progress'
-                });
-                taskData.status = 'in-progress';
-              } catch (e) {
-                console.error("Auto transition to in-progress failed:", e);
+            // Check technician assignments
+            if (role === 'technician') {
+              const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
+              const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
+              setIsAssignedTech(isAssigned);
+
+              // Auto transition and record scanner done_by ID
+              if (isAssigned && taskData.status === 'pending') {
+                try {
+                  await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
+                    status: 'in-progress',
+                    done_by: userId
+                  });
+                  taskData.status = 'in-progress';
+                  taskData.done_by = userId;
+                } catch (e) {
+                  console.error("Auto transition to in-progress failed:", e);
+                }
               }
             } else if (role === 'engineer' && taskData.priority === 'emergency' && taskData.status === 'in-progress') {
               try {
+                // Auto transition and record reviewer checked_by ID
                 await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
-                  status: 'under_review'
+                  status: 'under_review',
+                  checked_by: userId
                 });
                 taskData.status = 'under_review';
+                taskData.checked_by = userId;
               } catch (e) {
                 console.error("Auto transition to under_review failed:", e);
               }
@@ -369,6 +382,12 @@ export default function MachineProfile() {
               <Text style={styles.warningText}>Proximity check failed. Please move closer to the machine.</Text>
             </View>
           )}
+          {!isAssignedTech && (
+            <View style={[styles.warningBox, { marginTop: 12 }]}>
+              <AlertTriangle color="#ef4444" size={20} />
+              <Text style={styles.warningText}>You are not assigned to this maintenance task. Only assigned technicians can perform this check.</Text>
+            </View>
+          )}
         </View>
 
         {/* Pending Scheduled Task Section */}
@@ -423,7 +442,7 @@ export default function MachineProfile() {
         )}
 
         {/* Remarks/Notes Input Section */}
-        {scheduledTask && (
+        {scheduledTask && isAssignedTech && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
               {userRole === "engineer" ? "Engineer Remarks & Actions" : "Maintenance Notes / Remarks"}
@@ -447,7 +466,7 @@ export default function MachineProfile() {
         )}
 
         {/* Work Evidence Upload Section (Only mandatory for technician completed or optional for engineer) */}
-        {scheduledTask && (
+        {scheduledTask && isAssignedTech && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Work Evidence</Text>
             {!evidenceImage ? (
@@ -501,7 +520,12 @@ export default function MachineProfile() {
       {/* Footer Submission Buttons */}
       <View style={styles.footer}>
         {scheduledTask ? (
-          userRole === "engineer" ? (
+          !isAssignedTech ? (
+            <View style={[styles.updateBtn, styles.disabledBtn]}>
+              <AlertTriangle color="white" size={20} />
+              <Text style={styles.updateBtnText}>Not Assigned to You</Text>
+            </View>
+          ) : userRole === "engineer" ? (
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity 
                 style={[styles.actionBtn, styles.successBtn, updateLoading && styles.disabledBtn]} 

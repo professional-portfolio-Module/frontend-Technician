@@ -161,6 +161,35 @@ export default function MachineProfile() {
     if (!result.canceled) setEvidenceImage(result.assets[0].uri);
   };
 
+  const uploadImageToCloudinary = async (localUri: string): Promise<string> => {
+    const cloudName = "dg1surpxu";
+    const uploadPreset = "avvtqcth";
+
+    const formData = new FormData();
+    const filename = localUri.split('/').pop() || "evidence.jpg";
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+    formData.append("file", { uri: localUri, name: filename, type } as any);
+    formData.append("upload_preset", uploadPreset);
+
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Cloudinary upload failed: ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result.secure_url;
+  };
+
   const handleUpdateStatus = async () => {
     if (!isNear) {
       Alert.alert("Action Restricted", "You must be near the machine to update its status.");
@@ -179,10 +208,14 @@ export default function MachineProfile() {
 
     setUpdateLoading(true);
     try {
+      // 1. Upload the image directly to Cloudinary
+      const cloudinaryUrl = await uploadImageToCloudinary(evidenceImage);
+
+      // 2. Submit the payload with the secure Cloudinary image URL
       const payload = {
         status: "completed",
         technician_remarks: remarks.trim() || "Maintenance task completed by technician.",
-        attachment_url: evidenceImage,
+        attachment_url: cloudinaryUrl,
         done_by: currentUserId
       };
 
@@ -197,7 +230,7 @@ export default function MachineProfile() {
       }
     } catch (error) {
       console.error("Failed to update scheduled task:", error);
-      Alert.alert("Error", "An error occurred while updating the task.");
+      Alert.alert("Upload Error", "An error occurred while uploading evidence or updating the task.");
     } finally {
       setUpdateLoading(false);
     }

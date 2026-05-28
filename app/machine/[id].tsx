@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, Image as ImageIcon, X, Info } from "lucide-react-native";
+import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info } from "lucide-react-native";
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
@@ -16,7 +16,7 @@ const MOCK_MACHINES: Record<string, any> = {
     name: "Industrial Chiller Unit 04",
     type: "HVAC System",
     location: "Main Plant Room, Basement B2",
-    coordinates: { latitude: 6.9271, longitude: 79.8612 }, // Example coords
+    coordinates: { latitude: 6.9271, longitude: 79.8612 },
     lastService: "2026-04-15",
     status: "not checked yet",
     specs: {
@@ -32,13 +32,32 @@ export default function MachineProfile() {
   const router = useRouter();
   const { t } = useTranslation();
   const [machine, setMachine] = useState<any>(null);
+  const [scheduledTask, setScheduledTask] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState(true);
   const [isFetching, setIsFetching] = useState(true);
   const [isNear, setIsNear] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
+  const [remarks, setRemarks] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    const fetchUserId = async () => {
+      try {
+        const sessionRes = await apiClient.get("/auth/session");
+        if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+          const username = sessionRes.data.data.user_name;
+          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+          if (profileRes.data.success && profileRes.data.data?.id) {
+            setCurrentUserId(profileRes.data.data.id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to retrieve user ID for task updates:", err);
+      }
+    };
+
+    fetchUserId();
     checkProximity();
     fetchMachineDetails();
   }, [id]);
@@ -64,14 +83,29 @@ export default function MachineProfile() {
             refrigerant: "N/A"
           }
         });
+
+        // Fetch the pending scheduled task for this asset
+        try {
+          const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${data.card_no}`);
+          if (taskRes.data && taskRes.data.success && taskRes.data.data) {
+            setScheduledTask(taskRes.data.data);
+          } else {
+            setScheduledTask(null);
+          }
+        } catch (taskErr) {
+          console.error("Failed to fetch pending scheduled task:", taskErr);
+          setScheduledTask(null);
+        }
       } else {
         // Fallback to mock data if API fails to find it (for demo purposes)
         setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+        setScheduledTask(null);
       }
     } catch (error) {
       console.error("Failed to fetch machine details:", error);
       // Fallback
       setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+      setScheduledTask(null);
     } finally {
       setIsFetching(false);
     }
@@ -86,13 +120,8 @@ export default function MachineProfile() {
         return;
       }
 
-      let location = await Location.getCurrentPositionAsync({});
-      
-      // Calculate distance (simplified for demo)
-      // In real scenario, use Haversine formula
-      const dist = 0; // Assume we are at the location for demo
-      
-      setIsNear(true); // Forced true for demo purposes
+      await Location.getCurrentPositionAsync({});
+      setIsNear(true); // Forced true for simulator purposes
     } catch (error) {
       console.error(error);
     } finally {
@@ -101,6 +130,10 @@ export default function MachineProfile() {
   };
 
   const handlePickEvidence = async () => {
+    if (!scheduledTask) {
+      Alert.alert("No Task Available", "You can only capture work evidence if there is an active scheduled maintenance task.");
+      return;
+    }
     Alert.alert(
       "Photo Evidence",
       "Take a photo or choose from gallery to verify the check.",
@@ -128,19 +161,46 @@ export default function MachineProfile() {
     if (!result.canceled) setEvidenceImage(result.assets[0].uri);
   };
 
-  const handleUpdateStatus = () => {
+  const handleUpdateStatus = async () => {
     if (!isNear) {
       Alert.alert("Action Restricted", "You must be near the machine to update its status.");
       return;
     }
 
+    if (!scheduledTask) {
+      Alert.alert("No Pending Task", "There are no pending scheduled maintenance tasks for this machine.");
+      return;
+    }
+
+    if (!evidenceImage) {
+      Alert.alert("Evidence Required", "Please upload photo evidence before completing the task.");
+      return;
+    }
+
     setUpdateLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setMachine({ ...machine, status: "check completed" });
+    try {
+      const payload = {
+        status: "completed",
+        technician_remarks: remarks.trim() || "Maintenance task completed by technician.",
+        attachment_url: evidenceImage,
+        done_by: currentUserId
+      };
+
+      const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+
+      if (res.data.success) {
+        Alert.alert("Success", "Maintenance task completed successfully!");
+        setMachine({ ...machine, status: "check completed" });
+        setScheduledTask(null); // Clear the active task as it is now finished
+      } else {
+        Alert.alert("Error", "Failed to update task status in database.");
+      }
+    } catch (error) {
+      console.error("Failed to update scheduled task:", error);
+      Alert.alert("Error", "An error occurred while updating the task.");
+    } finally {
       setUpdateLoading(false);
-      Alert.alert("Success", "Machine status updated to 'Check Completed'");
-    }, 1500);
+    }
   };
 
   if (isVerifying || isFetching || !machine) {
@@ -154,6 +214,8 @@ export default function MachineProfile() {
     );
   }
 
+  const isEmergency = scheduledTask?.priority === "emergency";
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -166,6 +228,7 @@ export default function MachineProfile() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Machine Main Card */}
         <View style={styles.mainCard}>
           <View style={styles.badgeRow}>
             <View style={[styles.statusBadge, machine.status === "check completed" ? styles.successBadge : styles.pendingBadge]}>
@@ -192,42 +255,70 @@ export default function MachineProfile() {
           )}
         </View>
 
+        {/* Pending Scheduled Task Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Specifications</Text>
-          <View style={styles.specsGrid}>
-            <View style={styles.specItem}>
-              <Cpu color="#1B428A" size={20} />
-              <View>
-                <Text style={styles.specLabel}>Model</Text>
-                <Text style={styles.specValue}>{machine.specs.model}</Text>
+          <Text style={styles.sectionTitle}>Scheduled Maintenance Task</Text>
+          {scheduledTask ? (
+            <View style={[styles.taskCard, isEmergency && styles.emergencyTaskCard]}>
+              <View style={styles.taskHeaderRow}>
+                <Text style={styles.taskTitle}>{scheduledTask.schedule_title}</Text>
+                <View style={[styles.priorityBadge, isEmergency ? styles.emergencyBadge : styles.normalBadge]}>
+                  <Text style={[styles.priorityText, isEmergency ? styles.emergencyText : styles.normalText]}>
+                    {scheduledTask.priority.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.taskDetailsText}>
+                {scheduledTask.additional_details || "No additional task instructions provided."}
+              </Text>
+
+              <View style={styles.taskMetaRow}>
+                <Calendar color="#64748b" size={14} />
+                <Text style={styles.taskMetaText}>
+                  Due Date: {scheduledTask.due_date ? new Date(scheduledTask.due_date).toLocaleDateString() : "N/A"}
+                </Text>
               </View>
             </View>
-            <View style={styles.specItem}>
-              <ShieldCheck color="#1B428A" size={20} />
-              <View>
-                <Text style={styles.specLabel}>Capacity</Text>
-                <Text style={styles.specValue}>{machine.specs.capacity}</Text>
-              </View>
+          ) : (
+            <View style={styles.noTaskBox}>
+              <Info color="#64748b" size={20} />
+              <Text style={styles.noTaskText}>
+                No pending scheduled tasks found for this machine. You cannot submit maintenance reports without an active task.
+              </Text>
             </View>
-          </View>
+          )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>History</Text>
-          <View style={styles.historyCard}>
-            <View style={styles.historyItem}>
-              <Calendar color="#64748b" size={16} />
-              <Text style={styles.historyText}>Last Service: {machine.lastService}</Text>
+        {/* Remarks/Notes Input Section */}
+        {scheduledTask && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Maintenance Notes / Remarks</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.remarksInput}
+                placeholder="Write observations, actions taken, or replacement parts used..."
+                placeholderTextColor="#94a3b8"
+                multiline
+                numberOfLines={4}
+                value={remarks}
+                onChangeText={setRemarks}
+              />
             </View>
           </View>
-        </View>
+        )}
 
+        {/* Work Evidence Upload Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Work Evidence</Text>
           {!evidenceImage ? (
-            <TouchableOpacity style={styles.uploadBox} onPress={handlePickEvidence}>
-              <Camera color="#1B428A" size={32} />
-              <Text style={styles.uploadText}>Add Photo Evidence</Text>
+            <TouchableOpacity 
+              style={[styles.uploadBox, !scheduledTask && styles.disabledUploadBox]} 
+              onPress={handlePickEvidence}
+              disabled={!scheduledTask}
+            >
+              <Camera color={scheduledTask ? "#1B428A" : "#cbd5e1"} size={32} />
+              <Text style={[styles.uploadText, !scheduledTask && styles.disabledUploadText]}>Add Photo Evidence</Text>
               <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
             </TouchableOpacity>
           ) : (
@@ -243,17 +334,39 @@ export default function MachineProfile() {
           )}
         </View>
 
+        {/* Specifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Specifications</Text>
+          <View style={styles.specsGrid}>
+            <View style={styles.specItem}>
+              <Cpu color="#1B428A" size={20} />
+              <View>
+                <Text style={styles.specLabel}>Model/Category</Text>
+                <Text style={styles.specValue}>{machine.specs.model}</Text>
+              </View>
+            </View>
+            <View style={styles.specItem}>
+              <ShieldCheck color="#1B428A" size={20} />
+              <View>
+                <Text style={styles.specLabel}>Last Service</Text>
+                <Text style={styles.specValue}>{machine.lastService}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* Footer Submission Button */}
       <View style={styles.footer}>
         <TouchableOpacity 
           style={[
             styles.updateBtn, 
-            (machine.status === "check completed" || !evidenceImage) && styles.disabledBtn
+            (!scheduledTask || !evidenceImage || updateLoading) && styles.disabledBtn
           ]} 
           onPress={handleUpdateStatus}
-          disabled={machine.status === "check completed" || updateLoading || !evidenceImage}
+          disabled={!scheduledTask || !evidenceImage || updateLoading}
         >
           {updateLoading ? (
             <ActivityIndicator color="white" />
@@ -261,12 +374,12 @@ export default function MachineProfile() {
             <>
               <CheckCircle2 color="white" size={20} />
               <Text style={styles.updateBtnText}>
-                {machine.status === "check completed" ? "Already Checked" : "Mark as Checked"}
+                {machine.status === "check completed" ? "Already Checked" : "Complete Maintenance Task"}
               </Text>
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.restrictionNote}>Only status updates are permitted for Technicians</Text>
+        <Text style={styles.restrictionNote}>Only scheduled pending tasks can be completed by Technicians</Text>
       </View>
     </SafeAreaView>
   );
@@ -325,7 +438,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   badgeRow: {
     flexDirection: "row",
@@ -398,94 +511,104 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     color: "#1B428A",
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  specsGrid: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  specItem: {
-    flex: 1,
+  taskCard: {
     backgroundColor: "white",
-    padding: 16,
     borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: "#e2e8f0",
+  },
+  emergencyTaskCard: {
+    borderColor: "#fee2e2",
+    backgroundColor: "#fff5f5",
+  },
+  taskHeaderRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
+    marginBottom: 8,
   },
-  specLabel: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-  specValue: {
-    fontSize: 14,
+  taskTitle: {
+    fontSize: 16,
     fontWeight: "bold",
     color: "#1e293b",
+    flex: 1,
   },
-  historyCard: {
-    backgroundColor: "white",
+  priorityBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  normalBadge: {
+    backgroundColor: "#f1f5f9",
+  },
+  emergencyBadge: {
+    backgroundColor: "#fef2f2",
+  },
+  priorityText: {
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  normalText: {
+    color: "#64748b",
+  },
+  emergencyText: {
+    color: "#ef4444",
+  },
+  taskDetailsText: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  taskMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  taskMetaText: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+  noTaskBox: {
+    backgroundColor: "#f1f5f9",
     padding: 16,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
-  },
-  historyItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  historyText: {
+  noTaskText: {
     color: "#64748b",
-    fontSize: 14,
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 18,
   },
-  footer: {
-    padding: 24,
+  inputWrapper: {
     backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    alignItems: "center",
-  },
-  updateBtn: {
-    backgroundColor: "#1B428A",
-    width: "100%",
-    height: 60,
     borderRadius: 20,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
-    elevation: 4,
-    shadowColor: "#1B428A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  disabledBtn: {
-    backgroundColor: "#94a3b8",
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  updateBtnText: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  restrictionNote: {
-    marginTop: 12,
-    fontSize: 11,
-    color: "#94a3b8",
-    fontStyle: "italic",
+  remarksInput: {
+    height: 90,
+    color: "#1e293b",
+    fontSize: 14,
+    textAlignVertical: "top",
   },
   uploadBox: {
-    height: 160,
+    height: 140,
     backgroundColor: "white",
     borderRadius: 24,
     borderWidth: 2,
@@ -495,13 +618,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  disabledUploadBox: {
+    backgroundColor: "#f8fafc",
+    borderColor: "#cbd5e1",
+    borderStyle: "solid",
+  },
   uploadText: {
     fontSize: 16,
     fontWeight: "bold",
     color: "#1B428A",
   },
+  disabledUploadText: {
+    color: "#cbd5e1",
+  },
   uploadSubtext: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#94a3b8",
   },
   evidenceContainer: {
@@ -528,55 +659,66 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  stepTracker: {
+  specsGrid: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  specItem: {
+    flex: 1,
     backgroundColor: "white",
     padding: 16,
-    borderRadius: 24,
-    marginBottom: 20,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#f1f5f9",
-  },
-  stepIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
+    gap: 12,
   },
-  stepDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#e2e8f0",
-    justifyContent: "center",
+  specLabel: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  specValue: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#1e293b",
+  },
+  footer: {
+    padding: 24,
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
     alignItems: "center",
   },
-  activeStep: {
+  updateBtn: {
     backgroundColor: "#1B428A",
+    width: "100%",
+    height: 60,
+    borderRadius: 20,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    elevation: 4,
+    shadowColor: "#1B428A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
-  stepNum: {
+  disabledBtn: {
+    backgroundColor: "#cbd5e1",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  updateBtnText: {
     color: "white",
-    fontSize: 10,
+    fontSize: 16,
     fontWeight: "bold",
   },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: "#e2e8f0",
-    marginHorizontal: 4,
-  },
-  activeLine: {
-    backgroundColor: "#1B428A",
-  },
-  stepLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  stepLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748b",
-    width: 60,
-    textAlign: "center",
+  restrictionNote: {
+    marginTop: 10,
+    fontSize: 11,
+    color: "#94a3b8",
+    fontStyle: "italic",
   },
 });

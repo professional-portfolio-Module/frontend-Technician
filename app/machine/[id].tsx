@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info } from "lucide-react-native";
+import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle } from "lucide-react-native";
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
@@ -40,55 +40,84 @@ export default function MachineProfile() {
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchUserId = async () => {
+    const initialize = async () => {
       try {
-        const sessionRes = await apiClient.get("/auth/session");
-        if (sessionRes.data.success && sessionRes.data.data?.user_name) {
-          const username = sessionRes.data.data.user_name;
-          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
-          if (profileRes.data.success && profileRes.data.data?.id) {
-            setCurrentUserId(profileRes.data.data.id);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to retrieve user ID for task updates:", err);
-      }
-    };
-
-    fetchUserId();
-    checkProximity();
-    fetchMachineDetails();
-  }, [id]);
-
-  const fetchMachineDetails = async () => {
-    try {
-      setIsFetching(true);
-      const res = await apiClient.get(`/Main/router-backend/api/equipment?search=${id}`);
-      if (res.data && res.data.success && res.data.data.items.length > 0) {
-        const data = res.data.data.items.find((m: any) => m.card_no === id) || res.data.data.items[0];
-        setMachine({
-          id: data.card_no,
-          name: data.description || "Unknown Asset",
-          type: data.category_name || "Unknown Category",
-          location: data.location || "Location not set",
-          coordinates: { latitude: 0, longitude: 0 },
-          lastService: data.installation_date ? new Date(data.installation_date).toLocaleDateString() : "Unknown",
-          status: data.status || "not checked yet",
-          dbId: data.id,
-          specs: {
-            model: data.category_code || "N/A",
-            capacity: "N/A",
-            refrigerant: "N/A"
-          }
-        });
-
-        // Fetch the pending scheduled task for this asset
+        setIsFetching(true);
+        // 1. Fetch user ID and Role
+        let role = "";
+        let userId = "";
         try {
-          const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${data.card_no}`);
+          const sessionRes = await apiClient.get("/auth/session");
+          if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+            const username = sessionRes.data.data.user_name;
+            const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+            if (profileRes.data.success && profileRes.data.data?.id) {
+              userId = profileRes.data.data.id;
+              role = profileRes.data.data.role ? profileRes.data.data.role.toLowerCase() : "";
+              setCurrentUserId(userId);
+              setUserRole(role);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to retrieve user ID for task updates:", err);
+        }
+
+        // 2. Fetch machine details
+        const res = await apiClient.get(`/Main/router-backend/api/equipment?search=${id}`);
+        let cardNo = id as string;
+        if (res.data && res.data.success && res.data.data.items.length > 0) {
+          const data = res.data.data.items.find((m: any) => m.card_no === id) || res.data.data.items[0];
+          cardNo = data.card_no;
+          setMachine({
+            id: data.card_no,
+            name: data.description || "Unknown Asset",
+            type: data.category_name || "Unknown Category",
+            location: data.location || "Location not set",
+            coordinates: { latitude: 0, longitude: 0 },
+            lastService: data.installation_date ? new Date(data.installation_date).toLocaleDateString() : "Unknown",
+            status: data.status || "not checked yet",
+            dbId: data.id,
+            specs: {
+              model: data.category_code || "N/A",
+              capacity: "N/A",
+              refrigerant: "N/A"
+            }
+          });
+        } else {
+          setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+        }
+
+        // 3. Fetch the pending scheduled task for this asset
+        try {
+          const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
           if (taskRes.data && taskRes.data.success && taskRes.data.data) {
-            setScheduledTask(taskRes.data.data);
+            let taskData = taskRes.data.data;
+            
+            // Auto transitions
+            if (role === 'technician' && taskData.status === 'pending') {
+              try {
+                await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
+                  status: 'in-progress'
+                });
+                taskData.status = 'in-progress';
+              } catch (e) {
+                console.error("Auto transition to in-progress failed:", e);
+              }
+            } else if (role === 'engineer' && taskData.priority === 'emergency' && taskData.status === 'in-progress') {
+              try {
+                await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
+                  status: 'under_review'
+                });
+                taskData.status = 'under_review';
+              } catch (e) {
+                console.error("Auto transition to under_review failed:", e);
+              }
+            }
+            
+            setScheduledTask(taskData);
           } else {
             setScheduledTask(null);
           }
@@ -96,20 +125,18 @@ export default function MachineProfile() {
           console.error("Failed to fetch pending scheduled task:", taskErr);
           setScheduledTask(null);
         }
-      } else {
-        // Fallback to mock data if API fails to find it (for demo purposes)
+      } catch (error) {
+        console.error("Failed to fetch machine details:", error);
         setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
         setScheduledTask(null);
+      } finally {
+        setIsFetching(false);
       }
-    } catch (error) {
-      console.error("Failed to fetch machine details:", error);
-      // Fallback
-      setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
-      setScheduledTask(null);
-    } finally {
-      setIsFetching(false);
-    }
-  };
+    };
+
+    checkProximity();
+    initialize();
+  }, [id]);
 
   const checkProximity = async () => {
     try {
@@ -190,7 +217,7 @@ export default function MachineProfile() {
     return result.secure_url;
   };
 
-  const handleUpdateStatus = async () => {
+  const handleUpdateStatus = async (targetStatus: string) => {
     if (!isNear) {
       Alert.alert("Action Restricted", "You must be near the machine to update its status.");
       return;
@@ -201,20 +228,75 @@ export default function MachineProfile() {
       return;
     }
 
-    if (!evidenceImage) {
+    if (userRole === "technician" && !evidenceImage) {
       Alert.alert("Evidence Required", "Please upload photo evidence before completing the task.");
       return;
     }
 
     setUpdateLoading(true);
     try {
-      // 1. Upload the image directly to Cloudinary
+      let cloudinaryUrl = null;
+      if (evidenceImage) {
+        cloudinaryUrl = await uploadImageToCloudinary(evidenceImage);
+      }
+
+      const payload: any = {
+        status: targetStatus
+      };
+
+      if (userRole === "technician") {
+        payload.technician_remarks = remarks.trim() || "Maintenance task completed by technician.";
+        payload.attachment_url = cloudinaryUrl || scheduledTask.attachment_url;
+        payload.done_by = currentUserId;
+      } else if (userRole === "engineer") {
+        payload.engineer_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
+        payload.checked_by = currentUserId;
+        if (cloudinaryUrl) {
+          payload.attachment_url = cloudinaryUrl;
+        }
+      }
+
+      const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+
+      if (res.data.success) {
+        Alert.alert("Success", `Maintenance task status successfully updated to '${targetStatus}'!`);
+        setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
+        setScheduledTask(null); // Clear active task
+      } else {
+        Alert.alert("Error", "Failed to update task status in database.");
+      }
+    } catch (error) {
+      console.error("Failed to update scheduled task:", error);
+      Alert.alert("Upload Error", "An error occurred while uploading evidence or updating the task.");
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
+
+  const handleEscalateStatus = async () => {
+    if (!isNear) {
+      Alert.alert("Action Restricted", "You must be near the machine to escalate its status.");
+      return;
+    }
+
+    if (!scheduledTask) {
+      Alert.alert("No Pending Task", "There are no pending scheduled maintenance tasks for this machine.");
+      return;
+    }
+
+    if (!evidenceImage) {
+      Alert.alert("Evidence Required", "Please upload photo evidence showing the issue before escalating.");
+      return;
+    }
+
+    setUpdateLoading(true);
+    try {
       const cloudinaryUrl = await uploadImageToCloudinary(evidenceImage);
 
-      // 2. Submit the payload with the secure Cloudinary image URL
       const payload = {
-        status: "completed",
-        technician_remarks: remarks.trim() || "Maintenance task completed by technician.",
+        priority: "emergency",
+        status: "in-progress", // Keeps status as in-progress (technician check initiated)
+        technician_remarks: remarks.trim() || "Technician unable to complete task. Escalated to Emergency.",
         attachment_url: cloudinaryUrl,
         done_by: currentUserId
       };
@@ -222,15 +304,15 @@ export default function MachineProfile() {
       const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
 
       if (res.data.success) {
-        Alert.alert("Success", "Maintenance task completed successfully!");
-        setMachine({ ...machine, status: "check completed" });
-        setScheduledTask(null); // Clear the active task as it is now finished
+        Alert.alert("Escalated", "Task successfully escalated to Emergency! Engineers have been notified.");
+        setMachine({ ...machine, status: "escalated" });
+        setScheduledTask(null);
       } else {
-        Alert.alert("Error", "Failed to update task status in database.");
+        Alert.alert("Error", "Failed to escalate task.");
       }
     } catch (error) {
-      console.error("Failed to update scheduled task:", error);
-      Alert.alert("Upload Error", "An error occurred while uploading evidence or updating the task.");
+      console.error("Failed to escalate scheduled task:", error);
+      Alert.alert("Error", "An error occurred while escalating the task.");
     } finally {
       setUpdateLoading(false);
     }
@@ -248,6 +330,7 @@ export default function MachineProfile() {
   }
 
   const isEmergency = scheduledTask?.priority === "emergency";
+  const showTechRemarksForEngineer = userRole === "engineer" && scheduledTask?.technician_remarks;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -323,14 +406,36 @@ export default function MachineProfile() {
           )}
         </View>
 
+        {/* Display Technician Notes to Engineer */}
+        {showTechRemarksForEngineer && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Technician's Findings</Text>
+            <View style={styles.techRemarksCard}>
+              <Text style={styles.techRemarksText}>{scheduledTask.technician_remarks}</Text>
+              {scheduledTask.attachment_url && (
+                <View style={styles.techAttachmentContainer}>
+                  <Text style={styles.techAttachmentLabel}>Photo Evidence Attached:</Text>
+                  <Image source={{ uri: scheduledTask.attachment_url }} style={styles.techAttachmentPreview} />
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Remarks/Notes Input Section */}
         {scheduledTask && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Maintenance Notes / Remarks</Text>
+            <Text style={styles.sectionTitle}>
+              {userRole === "engineer" ? "Engineer Remarks & Actions" : "Maintenance Notes / Remarks"}
+            </Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.remarksInput}
-                placeholder="Write observations, actions taken, or replacement parts used..."
+                placeholder={
+                  userRole === "engineer"
+                    ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
+                    : "Write observations, actions taken, or replacement parts used..."
+                }
                 placeholderTextColor="#94a3b8"
                 multiline
                 numberOfLines={4}
@@ -341,31 +446,33 @@ export default function MachineProfile() {
           </View>
         )}
 
-        {/* Work Evidence Upload Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Work Evidence</Text>
-          {!evidenceImage ? (
-            <TouchableOpacity 
-              style={[styles.uploadBox, !scheduledTask && styles.disabledUploadBox]} 
-              onPress={handlePickEvidence}
-              disabled={!scheduledTask}
-            >
-              <Camera color={scheduledTask ? "#1B428A" : "#cbd5e1"} size={32} />
-              <Text style={[styles.uploadText, !scheduledTask && styles.disabledUploadText]}>Add Photo Evidence</Text>
-              <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.evidenceContainer}>
-              <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
+        {/* Work Evidence Upload Section (Only mandatory for technician completed or optional for engineer) */}
+        {scheduledTask && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Work Evidence</Text>
+            {!evidenceImage ? (
               <TouchableOpacity 
-                style={styles.removeEvidence} 
-                onPress={() => setEvidenceImage(null)}
+                style={[styles.uploadBox, !scheduledTask && styles.disabledUploadBox]} 
+                onPress={handlePickEvidence}
+                disabled={!scheduledTask}
               >
-                <X color="white" size={16} />
+                <Camera color={scheduledTask ? "#1B428A" : "#cbd5e1"} size={32} />
+                <Text style={[styles.uploadText, !scheduledTask && styles.disabledUploadText]}>Add Photo Evidence</Text>
+                <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
               </TouchableOpacity>
-            </View>
-          )}
-        </View>
+            ) : (
+              <View style={styles.evidenceContainer}>
+                <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
+                <TouchableOpacity 
+                  style={styles.removeEvidence} 
+                  onPress={() => setEvidenceImage(null)}
+                >
+                  <X color="white" size={16} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Specifications Section */}
         <View style={styles.section}>
@@ -391,28 +498,83 @@ export default function MachineProfile() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Footer Submission Button */}
+      {/* Footer Submission Buttons */}
       <View style={styles.footer}>
-        <TouchableOpacity 
-          style={[
-            styles.updateBtn, 
-            (!scheduledTask || !evidenceImage || updateLoading) && styles.disabledBtn
-          ]} 
-          onPress={handleUpdateStatus}
-          disabled={!scheduledTask || !evidenceImage || updateLoading}
-        >
-          {updateLoading ? (
-            <ActivityIndicator color="white" />
+        {scheduledTask ? (
+          userRole === "engineer" ? (
+            <View style={styles.actionButtonContainer}>
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.successBtn, updateLoading && styles.disabledBtn]} 
+                onPress={() => handleUpdateStatus("completed")}
+                disabled={updateLoading}
+              >
+                {updateLoading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <CheckCircle2 color="white" size={18} />
+                    <Text style={styles.actionBtnText}>Resolve & Complete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.dangerBtn, updateLoading && styles.disabledBtn]} 
+                onPress={() => handleUpdateStatus("rejected")}
+                disabled={updateLoading}
+              >
+                {updateLoading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <XCircle color="white" size={18} />
+                    <Text style={styles.actionBtnText}>Mark as Rejected</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           ) : (
-            <>
-              <CheckCircle2 color="white" size={20} />
-              <Text style={styles.updateBtnText}>
-                {machine.status === "check completed" ? "Already Checked" : "Complete Maintenance Task"}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.restrictionNote}>Only scheduled pending tasks can be completed by Technicians</Text>
+            <View style={styles.actionButtonContainer}>
+              <TouchableOpacity 
+                style={[
+                  styles.actionBtn, 
+                  styles.successBtn, 
+                  (!evidenceImage || updateLoading) && styles.disabledBtn
+                ]} 
+                onPress={() => handleUpdateStatus("completed")}
+                disabled={!evidenceImage || updateLoading}
+              >
+                {updateLoading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <CheckCircle2 color="white" size={18} />
+                    <Text style={styles.actionBtnText}>Complete Task</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.actionBtn, 
+                  styles.dangerBtn, 
+                  (!evidenceImage || updateLoading) && styles.disabledBtn
+                ]} 
+                onPress={handleEscalateStatus}
+                disabled={!evidenceImage || updateLoading}
+              >
+                {updateLoading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <AlertTriangle color="white" size={18} />
+                    <Text style={styles.actionBtnText}>Escalate to Emergency</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )
+        ) : (
+          <View style={[styles.updateBtn, styles.disabledBtn]}>
+            <CheckCircle2 color="white" size={20} />
+            <Text style={styles.updateBtnText}>No Active Task</Text>
+          </View>
+        )}
+        <Text style={styles.restrictionNote}>
+          {userRole === "engineer" 
+            ? "Engineer role: Can review and resolve/reject emergency escalations."
+            : "Technician role: Can complete or escalate tasks."}
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -626,6 +788,35 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
+  techRemarksCard: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  techRemarksText: {
+    fontSize: 14,
+    color: "#334155",
+    lineHeight: 20,
+    fontStyle: "italic",
+    marginBottom: 12,
+  },
+  techAttachmentContainer: {
+    marginTop: 8,
+  },
+  techAttachmentLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 6,
+  },
+  techAttachmentPreview: {
+    width: "100%",
+    height: 150,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+  },
   inputWrapper: {
     backgroundColor: "white",
     borderRadius: 20,
@@ -723,6 +914,35 @@ const styles = StyleSheet.create({
     borderTopColor: "#f1f5f9",
     alignItems: "center",
   },
+  actionButtonContainer: {
+    width: "100%",
+    gap: 12,
+  },
+  actionBtn: {
+    width: "100%",
+    height: 56,
+    borderRadius: 18,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  successBtn: {
+    backgroundColor: "#10b981",
+  },
+  dangerBtn: {
+    backgroundColor: "#ef4444",
+  },
+  actionBtnText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
   updateBtn: {
     backgroundColor: "#1B428A",
     width: "100%",
@@ -732,11 +952,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 10,
-    elevation: 4,
-    shadowColor: "#1B428A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
   },
   disabledBtn: {
     backgroundColor: "#cbd5e1",

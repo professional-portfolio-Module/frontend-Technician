@@ -34,18 +34,23 @@ export default function Dashboard() {
             const uid = userData.id;
             const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
 
+            console.log("DASHBOARD DEBUG - USER INFO:", { username, role, uid, hotelId });
+
             if (hotelId) {
               // 1. Fetch Scheduled Tasks
               const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
               let fetchedScheduled: any[] = [];
               if (tasksRes.data?.success && tasksRes.data.data) {
                 fetchedScheduled = tasksRes.data.data;
+                console.log("DASHBOARD DEBUG - RAW SCHEDULED TASKS COUNT:", fetchedScheduled.length);
                 if (role === 'technician') {
                   fetchedScheduled = fetchedScheduled.filter((t: any) => 
                     t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
                   );
+                  console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR TECH:", fetchedScheduled.length);
                 } else if (role === 'engineer') {
                   fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
+                  console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR ENG:", fetchedScheduled.length);
                 }
               }
 
@@ -54,10 +59,13 @@ export default function Dashboard() {
               let fetchedManual: any[] = [];
               if (manualRes.data?.success && manualRes.data.data) {
                 fetchedManual = manualRes.data.data;
+                console.log("DASHBOARD DEBUG - RAW MANUAL TASKS COUNT:", fetchedManual.length);
                 if (role === 'technician') {
                   fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
+                  console.log("DASHBOARD DEBUG - FILTERED MANUAL TASKS FOR TECH:", fetchedManual.length);
                 } else if (role === 'engineer') {
                   fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
+                  console.log("DASHBOARD DEBUG - FILTERED MANUAL TASKS FOR ENG:", fetchedManual.length);
                 }
               }
 

@@ -27,4 +27,49 @@ apiClient.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Interceptor to resolve missing hotelId dynamically using the Main service fallback
+apiClient.interceptors.response.use(
+  async (response) => {
+    const url = response.config.url || "";
+    if (url.includes("/AuthForward/auth/api/email/")) {
+      const responseData = response.data;
+      if (responseData && responseData.success && responseData.data) {
+        const userData = responseData.data;
+        const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
+        if (!hotelId && userData.id) {
+          try {
+            console.log(`[apiClient Interceptor] Fallback profile fetch for user: ${userData.id}`);
+            const token = await AsyncStorage.getItem('authToken');
+            const headers: Record<string, string> = {
+              "Content-Type": "application/json"
+            };
+            if (token) {
+              headers["Authorization"] = `Bearer ${token}`;
+            }
+            // Use native axios to bypass this interceptor and avoid recursion
+            const fallbackRes = await axios.get(
+              `${API_BASE_URL}/Main/router-backend/api/users/${userData.id}`,
+              { headers }
+            );
+            if (fallbackRes.data?.success && fallbackRes.data.data) {
+              const fullUser = fallbackRes.data.data;
+              userData.hotels = fullUser.hotels || [];
+              if (fullUser.hotels?.[0]?.id) {
+                userData.hotelId = fullUser.hotels[0].id;
+              }
+              console.log(`[apiClient Interceptor] Successfully fetched fallback hotelId: ${userData.hotelId}`);
+            }
+          } catch (err: any) {
+            console.warn("[apiClient Interceptor] Fallback user fetch failed:", err.message || err);
+          }
+        }
+      }
+    }
+    return response;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export default apiClient;

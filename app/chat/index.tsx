@@ -49,9 +49,13 @@ export default function ChatList() {
             
             if (usersRes.data && usersRes.data.success) {
               const allUsers = usersRes.data.data;
-              // Filter out current user and map to contact structure
+              // Filter out current user, restrict contacts to technicians, staff, managers, and engineers, and map to contact structure
+              const allowedRoles = ["technician", "staff", "manager", "engineer"];
               const mappedContacts = allUsers
-                .filter((u: any) => u.id !== user.id)
+                .filter((u: any) => {
+                  const roleLower = (u.role || "").toLowerCase();
+                  return u.id !== user.id && allowedRoles.includes(roleLower);
+                })
                 .map((u: any) => ({
                   id: u.id,
                   name: u.name,

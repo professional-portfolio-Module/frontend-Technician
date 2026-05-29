@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ChevronLeft, CheckCheck, MessageSquare } from "lucide-react-native";
+import { ChevronLeft, CheckCheck, MessageSquare, Search, X } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import apiClient from "../../src/services/api";
 
@@ -22,6 +22,12 @@ export default function ChatList() {
   const router = useRouter();
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredContacts = contacts.filter(contact =>
+    contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    contact.role.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   useEffect(() => {
     const loadChats = async () => {
@@ -124,13 +130,41 @@ export default function ChatList() {
           <Text style={styles.emptyText}>No contacts found in your hotel</Text>
         </View>
       ) : (
-        <FlatList
-          data={contacts}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
+        <>
+          <View style={styles.searchContainer}>
+            <View style={styles.searchWrapper}>
+              <Search color="#94a3b8" size={18} style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name or role..."
+                placeholderTextColor="#94a3b8"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
+                  <X color="#94a3b8" size={18} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {filteredContacts.length === 0 ? (
+            <View style={styles.centerContainer}>
+              <Search color="#cbd5e1" size={48} style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyText}>No conversations found matching "{searchQuery}"</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredContacts}
+              keyExtractor={(item) => item.id}
+              renderItem={renderItem}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
       )}
     </SafeAreaView>
   );
@@ -256,5 +290,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#94a3b8",
     textAlign: "center",
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  searchWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#1e293b",
+    height: "100%",
+    padding: 0,
+  },
+  clearBtn: {
+    padding: 4,
   },
 });

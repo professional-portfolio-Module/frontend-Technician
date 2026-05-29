@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle } from "lucide-react-native";
+import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle, QrCode } from "lucide-react-native";
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
@@ -52,7 +52,7 @@ const decodeBase64 = (str: string): string => {
 };
 
 export default function MachineProfile() {
-  const { id } = useLocalSearchParams();
+  const { id, fromScan } = useLocalSearchParams();
   const router = useRouter();
   const { t } = useTranslation();
   const [machine, setMachine] = useState<any>(null);
@@ -129,6 +129,16 @@ export default function MachineProfile() {
                 const hasAssignments = localTask.assigned_technicians && localTask.assigned_technicians.length > 0;
                 const isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
                 setIsAssignedTech(isAssigned);
+                
+                // Auto transition and queue scanner done_by ID offline only if fromScan is true
+                if (isAssigned && localTask.status === 'pending' && fromScan === 'true') {
+                  localTask.status = 'in-progress';
+                  localTask.done_by = userId;
+                  await syncService.queueMutation(localTask.task_id, {
+                    status: 'in-progress',
+                    done_by: userId
+                  });
+                }
               }
             } else {
               setScheduledTask(null);
@@ -177,8 +187,8 @@ export default function MachineProfile() {
                 const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
                 setIsAssignedTech(isAssigned);
 
-                // Auto transition and record scanner done_by ID
-                if (isAssigned && taskData.status === 'pending') {
+                // Auto transition and record scanner done_by ID only if fromScan is true
+                if (isAssigned && taskData.status === 'pending' && fromScan === 'true') {
                   try {
                     await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
                       status: 'in-progress',
@@ -331,6 +341,36 @@ export default function MachineProfile() {
     return result.secure_url;
   };
 
+  const handleStartTask = async () => {
+    if (!scheduledTask) return;
+    setUpdateLoading(true);
+    const payload = {
+      status: "in-progress",
+      done_by: currentUserId
+    };
+
+    try {
+      try {
+        const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+        if (res.data.success) {
+          Alert.alert("Success", "Task started! Status is now 'in-progress'.");
+          setScheduledTask({ ...scheduledTask, status: "in-progress", done_by: currentUserId });
+        } else {
+          Alert.alert("Error", "Failed to start the task.");
+        }
+      } catch (err) {
+        console.warn("API update failed, queueing start task offline:", err);
+        await syncService.queueMutation(scheduledTask.task_id, payload);
+        Alert.alert("Offline Sync Queued", "Task started offline. Status will update to 'in-progress' when network is restored.");
+        setScheduledTask({ ...scheduledTask, status: "in-progress", done_by: currentUserId });
+      }
+    } catch (error) {
+      console.error("Failed to start task:", error);
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
+
   const handleUpdateStatus = async (targetStatus: string) => {
     if (!isNear) {
       Alert.alert("Action Restricted", "You must be near the machine to update its status.");
@@ -461,6 +501,7 @@ export default function MachineProfile() {
 
   const isEmergency = scheduledTask?.priority === "emergency";
   const showTechRemarksForEngineer = userRole === "engineer" && scheduledTask?.technician_remarks;
+  const isPendingTask = userRole === "technician" && scheduledTask && scheduledTask.status === "pending";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -503,6 +544,14 @@ export default function MachineProfile() {
             <View style={[styles.warningBox, { marginTop: 12 }]}>
               <AlertTriangle color="#ef4444" size={20} />
               <Text style={styles.warningText}>You are not assigned to this maintenance task. Only assigned technicians can perform this check.</Text>
+            </View>
+          )}
+          {isPendingTask && (
+            <View style={[styles.warningBox, { marginTop: 12, backgroundColor: "#eff6ff", borderColor: "#3b82f6" }]}>
+              <Info color="#2563eb" size={20} />
+              <Text style={[styles.warningText, { color: "#1d4ed8" }]}>
+                If you are starting the maintenance, please change the pending status to 'in-progress' using the button below. Note: Photo evidence is mandatory to complete this task.
+              </Text>
             </View>
           )}
         </View>
@@ -564,19 +613,22 @@ export default function MachineProfile() {
             <Text style={styles.sectionTitle}>
               {userRole === "engineer" ? "Engineer Remarks & Actions" : "Maintenance Notes / Remarks"}
             </Text>
-            <View style={styles.inputWrapper}>
+            <View style={[styles.inputWrapper, isPendingTask && { opacity: 0.5 }]}>
               <TextInput
                 style={styles.remarksInput}
                 placeholder={
-                  userRole === "engineer"
-                    ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
-                    : "Write observations, actions taken, or replacement parts used..."
+                  isPendingTask
+                    ? "Locked: Change status to in-progress to start..."
+                    : userRole === "engineer"
+                      ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
+                      : "Write observations, actions taken, or replacement parts used..."
                 }
                 placeholderTextColor="#94a3b8"
                 multiline
                 numberOfLines={4}
                 value={remarks}
                 onChangeText={setRemarks}
+                editable={!isPendingTask}
               />
             </View>
           </View>
@@ -588,12 +640,12 @@ export default function MachineProfile() {
             <Text style={styles.sectionTitle}>Work Evidence</Text>
             {!evidenceImage ? (
               <TouchableOpacity 
-                style={[styles.uploadBox, !scheduledTask && styles.disabledUploadBox]} 
+                style={[styles.uploadBox, (!scheduledTask || isPendingTask) && styles.disabledUploadBox]} 
                 onPress={handlePickEvidence}
-                disabled={!scheduledTask}
+                disabled={!scheduledTask || isPendingTask}
               >
-                <Camera color={scheduledTask ? "#1B428A" : "#cbd5e1"} size={32} />
-                <Text style={[styles.uploadText, !scheduledTask && styles.disabledUploadText]}>Add Photo Evidence</Text>
+                <Camera color={(scheduledTask && !isPendingTask) ? "#1B428A" : "#cbd5e1"} size={32} />
+                <Text style={[styles.uploadText, (!scheduledTask || isPendingTask) && styles.disabledUploadText]}>Add Photo Evidence</Text>
                 <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
               </TouchableOpacity>
             ) : (
@@ -602,6 +654,7 @@ export default function MachineProfile() {
                 <TouchableOpacity 
                   style={styles.removeEvidence} 
                   onPress={() => setEvidenceImage(null)}
+                  disabled={isPendingTask}
                 >
                   <X color="white" size={16} />
                 </TouchableOpacity>
@@ -642,6 +695,19 @@ export default function MachineProfile() {
               <AlertTriangle color="white" size={20} />
               <Text style={styles.updateBtnText}>Not Assigned to You</Text>
             </View>
+          ) : isPendingTask ? (
+            <TouchableOpacity 
+              style={[styles.updateBtn, updateLoading && styles.disabledBtn]} 
+              onPress={handleStartTask}
+              disabled={updateLoading}
+            >
+              {updateLoading ? <ActivityIndicator color="white" /> : (
+                <>
+                  <CheckCircle2 color="white" size={20} />
+                  <Text style={styles.updateBtnText}>Start Maintenance (In-Progress)</Text>
+                </>
+              )}
+            </TouchableOpacity>
           ) : userRole === "engineer" ? (
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity 

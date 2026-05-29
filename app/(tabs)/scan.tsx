@@ -82,7 +82,7 @@ export default function ScanScreen() {
       console.warn("Failed to parse QR URL, using raw data", e);
     }
 
-    router.push(`/machine/${machineId}`);
+    router.push(`/machine/${machineId}?fromScan=true`);
     
     setTimeout(() => setScanned(false), 2000);
   };

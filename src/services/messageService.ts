@@ -138,6 +138,9 @@ export function getSafetyNumber(senderId: string, receiverId: string): string {
   return numberString.trim().split(" ").slice(0, 5).join(" ");
 }
 
+// In-memory cache of decrypted messages to prevent KDF chain rollback/desync
+const decryptedCache: Record<string, Message[]> = {};
+
 export const messageService = {
   async getChatHistory(senderId: string, otherUserId: string): Promise<Message[]> {
     try {
@@ -148,12 +151,38 @@ export const messageService = {
       if (response.data && response.data.success) {
         const rawHistory: Message[] = response.data.data;
         
-        let session = deriveInitialKeys(senderId, otherUserId);
+        let session = activeSessions[otherUserId];
+        let cached = decryptedCache[otherUserId] || [];
         
-        const decryptedHistory = [];
-        for (const msg of rawHistory) {
+        let isCompatible = !!session;
+        if (isCompatible) {
+          const minLen = Math.min(cached.length, rawHistory.length);
+          for (let i = 0; i < minLen; i++) {
+            const cachedId = cached[i].id;
+            const rawId = rawHistory[i].id || (rawHistory[i] as any)._id;
+            if (cachedId !== rawId) {
+              isCompatible = false;
+              break;
+            }
+          }
+        }
+        
+        if (!isCompatible) {
+          session = deriveInitialKeys(senderId, otherUserId);
+          cached = [];
+        }
+        
+        if (rawHistory.length <= cached.length && isCompatible) {
+          return cached;
+        }
+        
+        const startIndex = cached.length;
+        for (let i = startIndex; i < rawHistory.length; i++) {
+          const msg = rawHistory[i];
+          const msgId = msg.id || (msg as any)._id;
+          
           if (!msg.message.startsWith("e2ee:")) {
-            decryptedHistory.push(msg);
+            cached.push({ ...msg, id: msgId });
             continue;
           }
           
@@ -162,23 +191,24 @@ export const messageService = {
             session.sendingChainKey = nextChainKey;
             
             const decryptedText = decryptWithKey(msg.message, messageKey);
-            decryptedHistory.push({ ...msg, message: decryptedText });
+            cached.push({ ...msg, id: msgId, message: decryptedText });
           } else {
             const { nextChainKey, messageKey } = kdfStep(session.receivingChainKey);
             session.receivingChainKey = nextChainKey;
             
             const decryptedText = decryptWithKey(msg.message, messageKey);
-            decryptedHistory.push({ ...msg, message: decryptedText });
+            cached.push({ ...msg, id: msgId, message: decryptedText });
           }
         }
         
         activeSessions[otherUserId] = session;
-        return decryptedHistory;
+        decryptedCache[otherUserId] = cached;
+        return cached;
       }
       return [];
     } catch (error) {
       console.error("Failed to fetch chat history:", error);
-      return [];
+      return decryptedCache[otherUserId] || [];
     }
   },
 
@@ -202,10 +232,20 @@ export const messageService = {
       
       if (response.data && response.data.success) {
         const msg = response.data.data;
-        return {
+        const msgId = msg.id || msg._id;
+        
+        const decryptedMsg = {
           ...msg,
+          id: msgId,
           message
         };
+        
+        if (!decryptedCache[receiverId]) {
+          decryptedCache[receiverId] = [];
+        }
+        decryptedCache[receiverId].push(decryptedMsg);
+        
+        return decryptedMsg;
       }
       return null;
     } catch (error) {

@@ -50,33 +50,50 @@ export default function ChatDetail() {
     let pollInterval: NodeJS.Timeout;
 
     const initializeChat = async () => {
+      const otherUserId = Array.isArray(id) ? id[0] : id;
+      console.log(`[ChatDetail] Starting initializeChat for otherUserId: ${otherUserId}`);
       try {
         setLoading(true);
         // 1. Get current logged-in user
+        console.log("[ChatDetail] Fetching /auth/session...");
         const sessionRes = await apiClient.get("/auth/session");
         if (!active) return;
         if (sessionRes.data.success && sessionRes.data.data?.user_name) {
           const username = sessionRes.data.data.user_name;
+          console.log(`[ChatDetail] Fetching profile for username: ${username}...`);
           const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
           if (!active) return;
           if (profileRes.data.success && profileRes.data.data) {
             const currentU = profileRes.data.data;
             setCurrentUser(currentU);
+            console.log(`[ChatDetail] Current user resolved: ${currentU.id} (${currentU.email})`);
+
+            if (!otherUserId) {
+              console.warn("[ChatDetail] No other user ID provided in local search params.");
+              setLoading(false);
+              return;
+            }
 
             // 2. Fetch other user details
-            const otherUserRes = await apiClient.get(`/Main/router-backend/api/users/${id}`);
+            console.log(`[ChatDetail] Fetching other user details for ID: ${otherUserId}...`);
+            const otherUserRes = await apiClient.get(`/Main/router-backend/api/users/${otherUserId}`);
             if (!active) return;
             if (otherUserRes.data && otherUserRes.data.success) {
               const otherU = otherUserRes.data.data;
               setOtherUser(otherU);
+              console.log(`[ChatDetail] Other user resolved: ${otherU.id} (${otherU.name})`);
 
               // 3. Compute safety numbers
+              console.log("[ChatDetail] Computing safety number...");
               const fingerPrint = await getSafetyNumber(currentU.id, otherU.id);
               setSafetyNumberVal(fingerPrint);
+              console.log(`[ChatDetail] Safety number computed: ${fingerPrint}`);
 
               // 4. Fetch initial chat history
+              console.log("[ChatDetail] Fetching chat history...");
               const history = await messageService.getChatHistory(currentU.id, otherU.id);
               if (!active) return;
+              console.log(`[ChatDetail] Chat history fetched successfully. Count: ${history.length}`);
               
               const mapped = history.map((msg: any) => ({
                 id: msg.id,
@@ -87,25 +104,39 @@ export default function ChatDetail() {
               setMessages(mapped);
 
               // 5. Setup polling to fetch new messages every 3 seconds
+              console.log("[ChatDetail] Initializing background polling...");
               pollInterval = setInterval(async () => {
-                const updatedHistory = await messageService.getChatHistory(currentU.id, otherU.id);
-                if (active) {
-                  const newMapped = updatedHistory.map((msg: any) => ({
-                    id: msg.id,
-                    text: msg.message,
-                    sender: (msg.sender_id === currentU.id ? "me" : "other") as "me" | "other",
-                    time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  }));
-                  setMessages(newMapped);
+                try {
+                  const updatedHistory = await messageService.getChatHistory(currentU.id, otherU.id);
+                  if (active) {
+                    const newMapped = updatedHistory.map((msg: any) => ({
+                      id: msg.id,
+                      text: msg.message,
+                      sender: (msg.sender_id === currentU.id ? "me" : "other") as "me" | "other",
+                      time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    }));
+                    setMessages(newMapped);
+                  }
+                } catch (pollErr) {
+                  console.error("[ChatDetail] Background polling error:", pollErr);
                 }
               }, 3000);
+            } else {
+              console.warn("[ChatDetail] Failed to fetch other user from API:", otherUserRes.data);
             }
+          } else {
+            console.warn("[ChatDetail] Profile fetch failed:", profileRes.data);
           }
+        } else {
+          console.warn("[ChatDetail] Session fetch failed or user not logged in:", sessionRes.data);
         }
-      } catch (err) {
-        console.error("Failed to initialize chat:", err);
+      } catch (err: any) {
+        console.error("[ChatDetail] Error initializing chat:", err.message || err);
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          console.log("[ChatDetail] Done initializing chat. Setting loading to false.");
+          setLoading(false);
+        }
       }
     };
 

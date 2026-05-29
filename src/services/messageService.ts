@@ -42,7 +42,7 @@ function deriveInitialKeys(senderId: string, receiverId: string): RatchetSession
   const sortedIds = [senderId, receiverId].sort().join(":");
   const passwordString = `${sortedIds}:${E2EE_SALT}`;
   
-  const rawBaseBytes = forgePBKDF2(passwordString, E2EE_SALT, 100000, 64);
+  const rawBaseBytes = forgePBKDF2(passwordString, E2EE_SALT, 1000, 64);
   const sendBytes = rawBaseBytes.slice(0, 32);
   const recvBytes = rawBaseBytes.slice(32, 64);
   

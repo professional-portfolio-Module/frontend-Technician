@@ -1,28 +1,38 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert } from "react-native";
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronLeft, Send, Phone, MoreVertical, Paperclip, Image as ImageIcon, FileText, Camera } from "lucide-react-native";
+import { ChevronLeft, Send, Phone, Paperclip, Shield, FileText } from "lucide-react-native";
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { StatusBar } from "expo-status-bar";
+import apiClient from "../../src/services/api";
+import { messageService, getSafetyNumber } from "../../src/services/messageService";
 
-const MOCK_MESSAGES = [
-  { id: "1", text: "Hello! Did you check the chiller unit yet?", sender: "other", time: "10:15 AM" },
-  { id: "2", text: "I'm heading there now. Just finished the HVAC on Floor 4.", sender: "me", time: "10:20 AM" },
-  { id: "3", text: "Great. Please check the pressure valves specifically.", sender: "other", time: "10:24 AM" },
-];
+interface UIEventMessage {
+  id: string;
+  text: string;
+  sender: "me" | "other";
+  time: string;
+  image?: string;
+  file?: {
+    name: string;
+    size: number;
+    uri: string;
+  };
+}
 
 export default function ChatDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const flatListRef = useRef<FlatList>(null);
-  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<UIEventMessage[]>([]);
   const [inputText, setInputText] = useState("");
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [otherUser, setOtherUser] = useState<any>(null);
+  const [safetyNumber, setSafetyNumberVal] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -30,18 +40,118 @@ export default function ChatDetail() {
     }, 100);
   };
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    
-    const newMessage = {
-      id: Date.now().toString(),
-      text: inputText,
-      sender: "me",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Load user info and initialize chat
+  useEffect(() => {
+    let active = true;
+    let pollInterval: NodeJS.Timeout;
+
+    const initializeChat = async () => {
+      try {
+        setLoading(true);
+        // 1. Get current logged-in user
+        const sessionRes = await apiClient.get("/auth/session");
+        if (!active) return;
+        if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+          const username = sessionRes.data.data.user_name;
+          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+          if (!active) return;
+          if (profileRes.data.success && profileRes.data.data) {
+            const currentU = profileRes.data.data;
+            setCurrentUser(currentU);
+
+            // 2. Fetch other user details
+            const otherUserRes = await apiClient.get(`/Main/router-backend/api/users/${id}`);
+            if (!active) return;
+            if (otherUserRes.data && otherUserRes.data.success) {
+              const otherU = otherUserRes.data.data;
+              setOtherUser(otherU);
+
+              // 3. Compute safety numbers
+              const fingerPrint = await getSafetyNumber(currentU.id, otherU.id);
+              setSafetyNumberVal(fingerPrint);
+
+              // 4. Fetch initial chat history
+              const history = await messageService.getChatHistory(currentU.id, otherU.id);
+              if (!active) return;
+              
+              const mapped = history.map((msg: any) => ({
+                id: msg.id,
+                text: msg.message,
+                sender: (msg.sender_id === currentU.id ? "me" : "other") as "me" | "other",
+                time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              }));
+              setMessages(mapped);
+
+              // 5. Setup polling to fetch new messages every 3 seconds
+              pollInterval = setInterval(async () => {
+                const updatedHistory = await messageService.getChatHistory(currentU.id, otherU.id);
+                if (active) {
+                  const newMapped = updatedHistory.map((msg: any) => ({
+                    id: msg.id,
+                    text: msg.message,
+                    sender: (msg.sender_id === currentU.id ? "me" : "other") as "me" | "other",
+                    time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  }));
+                  setMessages(newMapped);
+                }
+              }, 3000);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to initialize chat:", err);
+      } finally {
+        if (active) setLoading(false);
+      }
     };
+
+    initializeChat();
+
+    return () => {
+      active = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [id]);
+
+  const handleSend = async () => {
+    if (!inputText.trim() || !currentUser || !otherUser || sending) return;
     
-    setMessages(prev => [...prev, newMessage]);
+    const textToSend = inputText;
     setInputText("");
+    setSending(true);
+
+    try {
+      const sentMsg = await messageService.sendMessage(currentUser.id, otherUser.id, textToSend);
+      if (sentMsg) {
+        const localMsg: UIEventMessage = {
+          id: sentMsg.id || Date.now().toString(),
+          text: textToSend,
+          sender: "me",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages(prev => [...prev, localMsg]);
+      } else {
+        Alert.alert("Error", "Failed to send encrypted message.");
+      }
+    } catch (err) {
+      console.error("Error sending message:", err);
+      Alert.alert("Error", "Failed to send message.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const showSafetyNumbers = () => {
+    if (!otherUser || !safetyNumber) return;
+    Alert.alert(
+      "Safety Numbers (E2EE)",
+      `To verify the end-to-end encryption with ${otherUser.name}, compare these numbers with their device:\n\n${safetyNumber}\n\nIf they match, your conversation is 100% secure.`,
+      [{ text: "OK" }]
+    );
   };
 
   const handleAttachMenu = () => {
@@ -64,7 +174,7 @@ export default function ChatDetail() {
     });
 
     if (!result.canceled) {
-      const newMessage = {
+      const newMessage: UIEventMessage = {
         id: Date.now().toString(),
         text: "",
         image: result.assets[0].uri,
@@ -82,12 +192,12 @@ export default function ChatDetail() {
     });
 
     if (!result.canceled) {
-      const newMessage = {
+      const newMessage: UIEventMessage = {
         id: Date.now().toString(),
         text: "",
         file: {
           name: result.assets[0].name,
-          size: result.assets[0].size,
+          size: result.assets[0].size || 0,
           uri: result.assets[0].uri,
         },
         sender: "me",
@@ -111,59 +221,66 @@ export default function ChatDetail() {
               <ChevronLeft color="#1B428A" size={28} />
             </TouchableOpacity>
             <Image 
-              source={{ uri: "https://i.pravatar.cc/150?u=john" }} 
+              source={{ uri: otherUser ? `https://ui-avatars.com/api/?name=${encodeURIComponent(otherUser.name)}&background=random` : "https://i.pravatar.cc/150?u=john" }} 
               style={styles.headerAvatar} 
             />
             <View>
-              <Text style={styles.headerName}>John Miller</Text>
-              <Text style={styles.headerStatus}>Online</Text>
+              <Text style={styles.headerName}>{otherUser ? otherUser.name : "Loading..."}</Text>
+              <Text style={styles.headerStatus}>{otherUser?.is_active ? "Online" : "Offline"}</Text>
             </View>
           </View>
           
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerIcon}>
-              <Phone color="#1B428A" size={20} />
+            <TouchableOpacity style={styles.headerIcon} onPress={showSafetyNumbers}>
+              <Shield color="#C5A059" size={22} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerIcon}>
-              <MoreVertical color="#1B428A" size={20} />
+              <Phone color="#1B428A" size={20} />
             </TouchableOpacity>
           </View>
         </View>
 
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          onContentSizeChange={scrollToBottom}
-          renderItem={({ item }) => (
-            <View style={[styles.messageBubble, item.sender === "me" ? styles.myMessage : styles.otherMessage]}>
-              {item.image && (
-                <Image source={{ uri: item.image }} style={styles.messageImage} />
-              )}
-              {item.file && (
-                <View style={styles.fileBubble}>
-                  <View style={styles.fileIconBox}>
-                    <FileText color="#1B428A" size={24} />
+        {loading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color="#1B428A" />
+            <Text style={styles.loadingText}>Fetching secure messages...</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            onContentSizeChange={scrollToBottom}
+            renderItem={({ item }) => (
+              <View style={[styles.messageBubble, item.sender === "me" ? styles.myMessage : styles.otherMessage]}>
+                {item.image && (
+                  <Image source={{ uri: item.image }} style={styles.messageImage} />
+                )}
+                {item.file && (
+                  <View style={styles.fileBubble}>
+                    <View style={styles.fileIconBox}>
+                      <FileText color="#1B428A" size={24} />
+                    </View>
+                    <View style={styles.fileInfo}>
+                      <Text style={[styles.fileName, item.sender === "me" ? styles.myText : styles.otherText]} numberOfLines={1}>
+                        {item.file.name}
+                      </Text>
+                      <Text style={styles.fileSize}>{(item.file.size / 1024).toFixed(1)} KB</Text>
+                    </View>
                   </View>
-                  <View style={styles.fileInfo}>
-                    <Text style={[styles.fileName, item.sender === "me" ? styles.myText : styles.otherText]} numberOfLines={1}>
-                      {item.file.name}
-                    </Text>
-                    <Text style={styles.fileSize}>{(item.file.size / 1024).toFixed(1)} KB</Text>
-                  </View>
-                </View>
-              )}
-              {item.text !== "" && (
-                <Text style={[styles.messageText, item.sender === "me" ? styles.myText : styles.otherText]}>
-                  {item.text}
-                </Text>
-              )}
-              <Text style={styles.messageTime}>{item.time}</Text>
-            </View>
-          )}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
+                )}
+                {item.text !== "" && (
+                  <Text style={[styles.messageText, item.sender === "me" ? styles.myText : styles.otherText]}>
+                    {item.text}
+                  </Text>
+                )}
+                <Text style={styles.messageTime}>{item.time}</Text>
+              </View>
+            )}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
         <View style={styles.inputArea}>
           <TouchableOpacity style={styles.attachBtn} onPress={handleAttachMenu}>
@@ -179,11 +296,11 @@ export default function ChatDetail() {
           />
           
           <TouchableOpacity 
-            style={[styles.sendBtn, !inputText.trim() && styles.disabledSend]} 
+            style={[styles.sendBtn, (!inputText.trim() || sending) && styles.disabledSend]} 
             onPress={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || sending}
           >
-            <Send color="white" size={20} />
+            {sending ? <ActivityIndicator color="white" size="small" /> : <Send color="white" size={20} />}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -354,5 +471,16 @@ const styles = StyleSheet.create({
   disabledSend: {
     backgroundColor: "#94a3b8",
     elevation: 0,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#64748b",
   },
 });

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode, HelpCircle, ArrowRight } from "lucide-react-native";
+import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import apiClient from "../../src/services/api";
 
@@ -12,141 +12,256 @@ export default function Dashboard() {
   const router = useRouter();
   const { t } = useTranslation();
   const [userName, setUserName] = useState("Loading...");
+  const [pendingJobsCount, setPendingJobsCount] = useState(0);
+  const [completedJobsCount, setCompletedJobsCount] = useState(0);
+  const [activeJob, setActiveJob] = useState<any>(null);
+  const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchSession = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const response = await apiClient.get("/auth/session");
-        if (response.data.success && response.data.data?.user_name) {
-          setUserName(response.data.data.user_name);
-        } else {
-          setUserName("Technician");
+        setLoading(true);
+        const sessionRes = await apiClient.get("/auth/session");
+        if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+          const username = sessionRes.data.data.user_name;
+          setUserName(username);
+
+          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+          if (profileRes.data.success && profileRes.data.data) {
+            const userData = profileRes.data.data;
+            const role = userData.role ? userData.role.toLowerCase() : "";
+            const uid = userData.id;
+            const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
+
+            if (hotelId) {
+              // 1. Fetch Scheduled Tasks
+              const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
+              let fetchedScheduled: any[] = [];
+              if (tasksRes.data?.success && tasksRes.data.data) {
+                fetchedScheduled = tasksRes.data.data;
+                if (role === 'technician') {
+                  fetchedScheduled = fetchedScheduled.filter((t: any) => 
+                    t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
+                  );
+                } else if (role === 'engineer') {
+                  fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
+                }
+              }
+
+              // 2. Fetch Manual Tasks
+              const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
+              let fetchedManual: any[] = [];
+              if (manualRes.data?.success && manualRes.data.data) {
+                fetchedManual = manualRes.data.data;
+                if (role === 'technician') {
+                  fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
+                } else if (role === 'engineer') {
+                  fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
+                }
+              }
+
+              // 3. Compute stats
+              const allTasks = [
+                ...fetchedScheduled.map(t => ({ ...t, is_manual: false })),
+                ...fetchedManual.map(t => ({ ...t, is_manual: true }))
+              ];
+
+              const pending = allTasks.filter(t => t.status === 'pending' || t.status === 'in-progress').length;
+              const completed = allTasks.filter(t => t.status === 'completed').length;
+              
+              setPendingJobsCount(pending);
+              setCompletedJobsCount(completed);
+
+              // 4. Find active job (in-progress)
+              const active = allTasks.find(t => t.status === 'in-progress');
+              setActiveJob(active || null);
+
+              // 5. Get upcoming pending tasks
+              const upcoming = allTasks
+                .filter(t => t.status === 'pending')
+                .sort((a, b) => {
+                  const dateA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+                  const dateB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                  return dateA - dateB;
+                })
+                .slice(0, 2);
+              setUpcomingJobs(upcoming);
+            }
+          }
         }
-      } catch (error) {
-        console.error("Failed to fetch session:", error);
-        setUserName("Technician");
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchSession();
+
+    fetchDashboardData();
   }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.welcomeText}>{t("welcome")},</Text>
-            <Text style={styles.userName}>{userName}</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.headerBtn}
-              onPress={() => router.push("/chat")}
-            >
-              <MessageSquare color="#1B428A" size={22} />
-              <View style={styles.unreadBadge} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.headerBtn}
-              onPress={() => router.push("/notifications")}
-            >
-              <Bell color="#1B428A" size={22} />
-            </TouchableOpacity>
-          </View>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#1B428A" />
+          <Text style={styles.loadingText}>Loading dashboard details...</Text>
         </View>
-
-        {/* Stats Summary */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, styles.primaryCard]}>
-            <View style={styles.statIconContainer}>
-              <TrendingUp color="white" size={20} />
-            </View>
-            <Text style={styles.statLabelLight}>Pending Jobs</Text>
-            <Text style={styles.statValueLight}>12</Text>
-          </View>
-          <View style={[styles.statCard, styles.whiteCard]}>
-            <View style={styles.statIconContainerSecondary}>
-              <CheckCircle2 color="#C5A059" size={20} />
-            </View>
-            <Text style={styles.statLabelDark}>Completed</Text>
-            <Text style={styles.statValueDark}>45</Text>
-          </View>
-        </View>
-
-        {/* Quick Scan Section */}
-        <TouchableOpacity 
-          style={styles.scanHeroCard}
-          onPress={() => router.push("/(tabs)/scan")}
-          activeOpacity={0.9}
-        >
-          <View style={styles.scanHeroContent}>
-            <View style={styles.scanIconLarge}>
-              <QrCode color="white" size={32} />
-            </View>
+      ) : (
+        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <View style={styles.header}>
             <View>
-              <Text style={styles.scanHeroTitle}>Scan Machine</Text>
-              <Text style={styles.scanHeroSubtitle}>Instantly access machine profile</Text>
+              <Text style={styles.welcomeText}>{t("welcome")},</Text>
+              <Text style={styles.userName}>{userName}</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.headerBtn}
+                onPress={() => router.push("/chat")}
+              >
+                <MessageSquare color="#1B428A" size={22} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.headerBtn}
+                onPress={() => router.push("/notifications")}
+              >
+                <Bell color="#1B428A" size={22} />
+              </TouchableOpacity>
             </View>
           </View>
-          <View style={styles.scanHeroBadge}>
-            <Text style={styles.scanHeroBadgeText}>READY</Text>
-          </View>
-        </TouchableOpacity>
 
-        {/* Active Job Card */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Active Job</Text>
-        </View>
-        
-        <TouchableOpacity 
-          activeOpacity={0.9}
-          onPress={() => router.push("/job/active-01")}
-          style={styles.activeJobCard}
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>In Progress</Text>
+          {/* Stats Summary */}
+          <View style={styles.statsRow}>
+            <View style={[styles.statCard, styles.primaryCard]}>
+              <View style={styles.statIconContainer}>
+                <TrendingUp color="white" size={20} />
+              </View>
+              <Text style={styles.statLabelLight}>Pending Jobs</Text>
+              <Text style={styles.statValueLight}>{pendingJobsCount}</Text>
             </View>
-            <Text style={styles.timeText}>Started 2h ago</Text>
-          </View>
-          
-          <Text style={styles.jobTitle}>HVAC System Repair</Text>
-          <Text style={styles.jobLocation}>Building A - Floor 4, Server Room</Text>
-          
-          <View style={styles.cardFooter}>
-            <View style={styles.deadlineIcon}>
-              <Calendar color="#1B428A" size={14} />
+            <View style={[styles.statCard, styles.whiteCard]}>
+              <View style={styles.statIconContainerSecondary}>
+                <CheckCircle2 color="#C5A059" size={20} />
+              </View>
+              <Text style={styles.statLabelDark}>Completed</Text>
+              <Text style={styles.statValueDark}>{completedJobsCount}</Text>
             </View>
-            <Text style={styles.deadlineText}>Deadline: Today, 4:00 PM</Text>
           </View>
-        </TouchableOpacity>
 
-        {/* Upcoming Jobs */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Upcoming Schedule</Text>
-          <TouchableOpacity>
-            <Text style={styles.viewAllText}>View All</Text>
+          {/* Quick Scan Section */}
+          <TouchableOpacity 
+            style={styles.scanHeroCard}
+            onPress={() => router.push("/(tabs)/scan")}
+            activeOpacity={0.9}
+          >
+            <View style={styles.scanHeroContent}>
+              <View style={styles.scanIconLarge}>
+                <QrCode color="white" size={32} />
+              </View>
+              <View>
+                <Text style={styles.scanHeroTitle}>Scan Machine</Text>
+                <Text style={styles.scanHeroSubtitle}>Instantly access machine profile</Text>
+              </View>
+            </View>
+            <View style={styles.scanHeroBadge}>
+              <Text style={styles.scanHeroBadgeText}>READY</Text>
+            </View>
           </TouchableOpacity>
-        </View>
 
-        {[1, 2].map((i) => (
-          <View key={i} style={styles.upcomingCard}>
-            <View style={styles.upcomingIconContainer}>
-              <AlertCircle color="#C5A059" size={24} />
-            </View>
-            <View style={styles.flex1}>
-              <Text style={styles.upcomingTitle}>Electrical Panel Check</Text>
-              <Text style={styles.upcomingSubtitle}>Sector 02 • Tomorrow</Text>
-            </View>
-            <View style={styles.priorityBadge}>
-              <Text style={styles.priorityText}>PRIORITY</Text>
-            </View>
+          {/* Active Job Card */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Active Job</Text>
           </View>
-        ))}
-        
-        <View style={{ height: 40 }} />
-      </ScrollView>
+          
+          {activeJob ? (
+            <TouchableOpacity 
+              activeOpacity={0.9}
+              onPress={() => {
+                const cardNo = activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no;
+                const manualTaskIdParam = activeJob.is_manual ? `?manual_task_id=${activeJob.manual_task_id}` : "";
+                router.push(`/machine/${cardNo}${manualTaskIdParam}`);
+              }}
+              style={styles.activeJobCard}
+            >
+              <View style={styles.cardHeader}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>In Progress</Text>
+                </View>
+              </View>
+              
+              <Text style={styles.jobTitle}>{activeJob.is_manual ? activeJob.title : activeJob.schedule_title}</Text>
+              <Text style={styles.jobLocation}>
+                {activeJob.is_manual ? activeJob.location : activeJob.asset_location || "Location not set"}
+              </Text>
+              
+              <View style={styles.cardFooter}>
+                <View style={styles.deadlineIcon}>
+                  <Calendar color="#1B428A" size={14} />
+                </View>
+                <Text style={styles.deadlineText}>
+                  Due: {activeJob.due_date ? new Date(activeJob.due_date).toLocaleDateString() : "N/A"}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.emptyActiveJobCard}>
+              <Clock color="#94a3b8" size={32} style={{ marginBottom: 8 }} />
+              <Text style={styles.emptyActiveJobTitle}>No Active Jobs</Text>
+              <Text style={styles.emptyActiveJobText}>
+                All tasks are pending or completed. Scan a machine QR code to start a job.
+              </Text>
+            </View>
+          )}
+
+          {/* Upcoming Jobs */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Upcoming Schedule</Text>
+            <TouchableOpacity onPress={() => router.push("/(tabs)/jobs")}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {upcomingJobs.length > 0 ? (
+            upcomingJobs.map((task, idx) => {
+              const cardNo = task.is_manual ? task.card_no : task.asset_card_no;
+              const taskId = task.is_manual ? task.manual_task_id : task.task_id;
+              const title = task.is_manual ? task.title : task.schedule_title;
+              const location = task.is_manual ? task.location : task.asset_location || "Location not set";
+              
+              return (
+                <TouchableOpacity 
+                  key={task.is_manual ? `m-${taskId}-${idx}` : `s-${taskId}-${idx}`} 
+                  style={styles.upcomingCard}
+                  onPress={() => {
+                    const manualTaskIdParam = task.is_manual ? `?manual_task_id=${taskId}` : "";
+                    router.push(`/machine/${cardNo}${manualTaskIdParam}`);
+                  }}
+                >
+                  <View style={styles.upcomingIconContainer}>
+                    <AlertCircle color="#C5A059" size={24} />
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.upcomingTitle} numberOfLines={1}>{title}</Text>
+                    <Text style={styles.upcomingSubtitle} numberOfLines={1}>
+                      {location} • Due {task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/A"}
+                    </Text>
+                  </View>
+                  <View style={styles.priorityBadge}>
+                    <Text style={styles.priorityText}>{task.priority.toUpperCase()}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <View style={styles.emptyUpcomingCard}>
+              <Text style={styles.emptyUpcomingText}>No upcoming pending schedule.</Text>
+            </View>
+          )}
+          
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -155,6 +270,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8fafc",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#64748b",
   },
   scroll: {
     flex: 1,
@@ -196,17 +321,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     position: "relative",
-  },
-  unreadBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 10,
-    height: 10,
-    backgroundColor: "#ef4444",
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: "white",
   },
   statsRow: {
     flexDirection: "row",
@@ -293,6 +407,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
   },
+  emptyActiveJobCard: {
+    backgroundColor: "white",
+    padding: 24,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    marginBottom: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyActiveJobTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1e293b",
+    marginBottom: 4,
+  },
+  emptyActiveJobText: {
+    fontSize: 12,
+    color: "#64748b",
+    textAlign: "center",
+  },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -310,10 +445,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "bold",
     textTransform: "uppercase",
-  },
-  timeText: {
-    color: "#94a3b8",
-    fontSize: 12,
   },
   jobTitle: {
     fontSize: 20,
@@ -449,69 +580,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "bold",
   },
-  guideCard: {
+  emptyUpcomingCard: {
     backgroundColor: "white",
-    borderRadius: 24,
     padding: 20,
-    marginBottom: 24,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#f1f5f9",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-  },
-  guideHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
-  },
-  guideTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  dismissText: {
-    fontSize: 12,
-    color: "#94a3b8",
-  },
-  stepsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  stepItem: {
-    alignItems: "center",
-    gap: 8,
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f1f5f9",
     justifyContent: "center",
-    alignItems: "center",
   },
-  stepCircleActive: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#10b981",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  stepNumber: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#64748b",
-  },
-  stepText: {
-    fontSize: 10,
-    fontWeight: "600",
+  emptyUpcomingText: {
+    fontSize: 13,
     color: "#94a3b8",
   },
 });

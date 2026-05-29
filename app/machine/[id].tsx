@@ -10,23 +10,7 @@ import { useTranslation } from "react-i18next";
 import apiClient from "../../src/services/api";
 import { syncService } from "../../src/services/syncService";
 
-// Fallback Mock Machine Data in case API fails
-const MOCK_MACHINES: Record<string, any> = {
-  "MCH-7829": {
-    id: "MCH-7829",
-    name: "Industrial Chiller Unit 04",
-    type: "HVAC System",
-    location: "Main Plant Room, Basement B2",
-    coordinates: { latitude: 6.9271, longitude: 79.8612 },
-    lastService: "2026-04-15",
-    status: "not checked yet",
-    specs: {
-      model: "Carrier 30XA",
-      capacity: "450 kW",
-      refrigerant: "R134a",
-    }
-  }
-};
+// Fallback Mock Machine Data has been removed entirely per specification.
 
 const decodeBase64 = (str: string): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -59,6 +43,7 @@ export default function MachineProfile() {
   const [scheduledTask, setScheduledTask] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState(true);
   const [isFetching, setIsFetching] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isNear, setIsNear] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
@@ -172,7 +157,9 @@ export default function MachineProfile() {
               }
             });
           } else {
-            setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+            setError("Asset with identifier " + id + " was not found in the hotel database.");
+            setIsFetching(false);
+            return;
           }
 
           // 3. Fetch the pending task for this asset
@@ -298,7 +285,7 @@ export default function MachineProfile() {
             });
             setScheduledTask(localTask);
           } else {
-            setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
+            setError("Failed to fetch asset details from backend API and no local cache was found.");
             setScheduledTask(null);
           }
         }
@@ -561,6 +548,28 @@ export default function MachineProfile() {
       setUpdateLoading(false);
     }
   };
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ChevronLeft color="#1B428A" size={28} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t("machine_profile")}</Text>
+          <View style={{ width: 44 }} />
+        </View>
+        <View style={styles.errorContainer}>
+          <AlertTriangle color="#ef4444" size={64} style={{ marginBottom: 16 }} />
+          <Text style={styles.errorTitle}>Asset Not Found</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (isVerifying || isFetching || !machine) {
     return (
@@ -1249,5 +1258,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#94a3b8",
     fontStyle: "italic",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: "#f8fafc",
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1e293b",
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: "#1B428A",
+    borderRadius: 12,
+  },
+  backButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });

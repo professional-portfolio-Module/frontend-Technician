@@ -96,13 +96,12 @@ export default function ReportsScreen() {
           <View style={styles.historyCard}>
             <View style={styles.historyItem}>
               <View style={styles.historyStatus}>
-                <CheckCircle color="#10b981" size={16} />
+                <FileText color="#94a3b8" size={16} />
               </View>
               <View style={styles.historyDetails}>
-                <Text style={styles.historyDate}>May 04, 2026</Text>
-                <Text style={styles.historySummary} numberOfLines={1}>Completed HVAC unit maintenance for Floor 4...</Text>
+                <Text style={styles.historyDate}>No submissions yet</Text>
+                <Text style={styles.historySummary}>Your submitted reports will appear here.</Text>
               </View>
-              <ChevronRight color="#cbd5e1" size={20} />
             </View>
           </View>
         </View>

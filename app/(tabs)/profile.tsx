@@ -32,13 +32,50 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState("Loading...");
+  const [userEmail, setUserEmail] = useState("");
+  const [userRole, setUserRole] = useState("");
+  const [completedJobsCount, setCompletedJobsCount] = useState(0);
 
   useEffect(() => {
     const fetchSession = async () => {
       try {
         const response = await apiClient.get("/auth/session");
         if (response.data.success && response.data.data?.user_name) {
-          setUserName(response.data.data.user_name);
+          const username = response.data.data.user_name;
+          setUserName(username);
+
+          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+          if (profileRes.data.success && profileRes.data.data) {
+            const userData = profileRes.data.data;
+            setUserEmail(userData.email || "");
+            setUserRole(userData.role ? userData.role.charAt(0).toUpperCase() + userData.role.slice(1).toLowerCase() : "Technician");
+
+            const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
+            if (hotelId) {
+              const uid = userData.id;
+              let completedCount = 0;
+
+              // Fetch completed Scheduled Tasks
+              const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
+              if (tasksRes.data?.success && tasksRes.data.data) {
+                const completedTasks = tasksRes.data.data.filter((t: any) => 
+                  t.status === 'completed' && t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
+                );
+                completedCount += completedTasks.length;
+              }
+
+              // Fetch completed Manual Tasks
+              const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
+              if (manualRes.data?.success && manualRes.data.data) {
+                const completedManual = manualRes.data.data.filter((t: any) => 
+                  t.status === 'completed' && t.assigned_to === uid
+                );
+                completedCount += completedManual.length;
+              }
+
+              setCompletedJobsCount(completedCount);
+            }
+          }
         } else {
           setUserName("Technician");
         }
@@ -97,22 +134,18 @@ export default function ProfileScreen() {
             <View style={styles.statusDot} />
           </View>
           <Text style={styles.name}>{userName}</Text>
-          <Text style={styles.role}>Senior HVAC Technician</Text>
+          <Text style={styles.role}>{userRole || "Technician"}</Text>
+          {userEmail !== "" && <Text style={styles.emailText}>{userEmail}</Text>}
           
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>4.9</Text>
-              <Text style={styles.statLabel}>Rating</Text>
+              <Text style={styles.statValue}>Active</Text>
+              <Text style={styles.statLabel}>Status</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.stat}>
-              <Text style={styles.statValue}>156</Text>
-              <Text style={styles.statLabel}>Jobs</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statValue}>2y</Text>
-              <Text style={styles.statLabel}>Exp</Text>
+              <Text style={styles.statValue}>{completedJobsCount}</Text>
+              <Text style={styles.statLabel}>Completed</Text>
             </View>
           </View>
         </View>
@@ -246,6 +279,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#C5A059",
     fontWeight: "600",
+    marginBottom: 4,
+  },
+  emailText: {
+    fontSize: 12,
+    color: "#64748b",
     marginBottom: 20,
   },
   statsRow: {

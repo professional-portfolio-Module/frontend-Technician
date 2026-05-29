@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Mail, Lock, User, Phone, ChevronLeft, ArrowRight, Building } from "lucide-react-native";
+import { Mail, Lock, User, Phone, ChevronLeft, ArrowRight, Building, Eye, EyeOff } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import { Picker } from "@react-native-picker/picker";
 import apiClient from "../../src/services/api";
@@ -21,6 +21,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [hotelId, setHotelId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [hotelsLoading, setHotelsLoading] = useState(true);
 
@@ -35,7 +36,7 @@ export default function RegisterScreen() {
           }
         }
       } catch (err) {
-        console.error("Failed to fetch hotels:", err);
+        console.warn("Failed to fetch hotels:", err);
       } finally {
         setHotelsLoading(false);
       }
@@ -74,7 +75,7 @@ export default function RegisterScreen() {
         showAlert("Registration Failed", response.data.message || "Something went wrong");
       }
     } catch (error: any) {
-      console.error("API Error: ", error);
+      console.warn("API Error: ", error.message || error);
       showAlert("Error", error.response?.data?.message || error.message || "Failed to connect to the server");
     } finally {
       setLoading(false);
@@ -177,8 +178,18 @@ export default function RegisterScreen() {
                     placeholder="••••••••"
                     value={password}
                     onChangeText={setPassword}
-                    secureTextEntry
+                    secureTextEntry={!showPassword}
                   />
+                  <TouchableOpacity 
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeIcon}
+                  >
+                    {showPassword ? (
+                      <EyeOff color="#94a3b8" size={20} />
+                    ) : (
+                      <Eye color="#94a3b8" size={20} />
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -273,6 +284,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: "#1e293b",
+  },
+  eyeIcon: {
+    padding: 8,
+    marginLeft: 8,
   },
   registerButton: {
     backgroundColor: "#C5A059",

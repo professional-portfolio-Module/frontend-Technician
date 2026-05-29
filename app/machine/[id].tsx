@@ -35,6 +35,12 @@ const decodeBase64 = (str: string): string => {
   return buffer;
 };
 
+const isValidUuid = (id: string | null | undefined): boolean => {
+  if (!id) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id);
+};
+
 export default function MachineProfile() {
   const { id, fromScan, manual_task_id } = useLocalSearchParams();
   const router = useRouter();
@@ -118,10 +124,10 @@ export default function MachineProfile() {
                 // Auto transition and queue scanner done_by ID offline only if fromScan is true
                 if (isAssigned && localTask.status === 'pending' && fromScan === 'true') {
                   localTask.status = 'in-progress';
-                  localTask.done_by = userId;
+                  localTask.done_by = isValidUuid(userId) ? userId : null;
                   await syncService.queueMutation(localTask.task_id, {
                     status: 'in-progress',
-                    done_by: userId
+                    done_by: isValidUuid(userId) ? userId : null
                   });
                 }
               }
@@ -229,10 +235,10 @@ export default function MachineProfile() {
                     try {
                       await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
                         status: 'in-progress',
-                        done_by: userId
+                        done_by: isValidUuid(userId) ? userId : null
                       });
                       taskData.status = 'in-progress';
-                      taskData.done_by = userId;
+                      taskData.done_by = isValidUuid(userId) ? userId : null;
                     } catch (e) {
                       console.error("Auto transition to in-progress failed:", e);
                     }
@@ -242,10 +248,10 @@ export default function MachineProfile() {
                     // Auto transition and record reviewer checked_by ID
                     await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
                       status: 'under_review',
-                      checked_by: userId
+                      checked_by: isValidUuid(userId) ? userId : null
                     });
                     taskData.status = 'under_review';
-                    taskData.checked_by = userId;
+                    taskData.checked_by = isValidUuid(userId) ? userId : null;
                   } catch (e) {
                     console.error("Auto transition to under_review failed:", e);
                   }
@@ -384,7 +390,7 @@ export default function MachineProfile() {
     setUpdateLoading(true);
     const payload = {
       status: "in-progress",
-      done_by: currentUserId
+      done_by: isValidUuid(currentUserId) ? currentUserId : null
     };
 
     const isManual = scheduledTask.is_manual;
@@ -448,14 +454,14 @@ export default function MachineProfile() {
           payload.technician_remarks = remarks.trim() || "Maintenance task completed by technician.";
         }
         payload.attachment_url = cloudinaryUrl || scheduledTask.attachment_url;
-        payload.done_by = currentUserId;
+        payload.done_by = isValidUuid(currentUserId) ? currentUserId : null;
       } else if (userRole === "engineer") {
         if (isManual) {
           payload.eng_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
         } else {
           payload.engineer_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
         }
-        payload.checked_by = currentUserId;
+        payload.checked_by = isValidUuid(currentUserId) ? currentUserId : null;
         if (cloudinaryUrl) {
           payload.attachment_url = cloudinaryUrl;
         }
@@ -511,9 +517,9 @@ export default function MachineProfile() {
 
       const payload: any = {
         priority: "emergency",
-        status: "in-progress", // Keeps status as in-progress (technician check initiated)
+        status: "in-progress",
         attachment_url: cloudinaryUrl,
-        done_by: currentUserId
+        done_by: isValidUuid(currentUserId) ? currentUserId : null
       };
 
       if (isManual) {

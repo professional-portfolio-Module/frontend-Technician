@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Mail, Lock, ArrowRight, ChevronLeft, UserCircle2 } from "lucide-react-native";
+import { Mail, Lock, ArrowRight, ChevronLeft, UserCircle2, Eye, EyeOff } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from "../../src/services/api";
@@ -12,12 +12,12 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const showAlert = (title: string, message: string) => {
     if (Platform.OS === 'web') {
       window.alert(`${title}: ${message}`);
     } else {
-      const { Alert } = require('react-native');
       Alert.alert(title, message);
     }
   };
@@ -58,7 +58,7 @@ export default function LoginScreen() {
             }
           }
         } catch (profileErr) {
-          console.error("Failed to verify user role:", profileErr);
+          console.warn("Failed to verify user role:", profileErr);
           showAlert("Access Denied", "Unable to verify account permissions.");
           setIsLoading(false);
           return;
@@ -71,11 +71,13 @@ export default function LoginScreen() {
         // Success! User is authenticated and token/cookies are set.
         router.replace("/(tabs)/dashboard");
       } else {
-        showAlert("Login Failed", "Invalid credentials");
+        const errorMsg = response.data?.message || "Invalid credentials";
+        showAlert("Login Failed", errorMsg);
       }
     } catch (error: any) {
-      console.error(error);
-      showAlert("Error", "Invalid credentials");
+      console.warn("Login failed:", error.message || error);
+      const errMsg = error.response?.data?.message || error.message || "Invalid credentials";
+      showAlert("Login Failed", errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -126,8 +128,18 @@ export default function LoginScreen() {
                   placeholder="••••••••"
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                 />
+                <TouchableOpacity 
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  {showPassword ? (
+                    <EyeOff color="#94a3b8" size={20} />
+                  ) : (
+                    <Eye color="#94a3b8" size={20} />
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -226,6 +238,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: "#1e293b",
+  },
+  eyeIcon: {
+    padding: 8,
+    marginLeft: 8,
   },
   forgotPass: {
     alignSelf: "flex-end",

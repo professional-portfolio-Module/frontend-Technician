@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Mail, ArrowLeft, Send, Lock, KeyRound } from "lucide-react-native";
+import { Mail, ArrowLeft, Send, Lock, KeyRound, Eye, EyeOff } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import apiClient from "../../src/services/api";
 
@@ -13,6 +13,7 @@ export default function ForgotPasswordScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [isSent, setIsSent] = useState(false);
 
   const showAlert = (title: string, message: string, onSuccess?: () => void) => {
@@ -43,7 +44,7 @@ export default function ForgotPasswordScreen() {
         showAlert("Error", response.data.message || "Failed to send OTP");
       }
     } catch (error: any) {
-      console.error(error);
+      console.warn("Forgot password send OTP failed:", error.message || error);
       showAlert("Error", error.response?.data?.message || "Failed to connect to the server");
     } finally {
       setIsLoading(false);
@@ -77,7 +78,7 @@ export default function ForgotPasswordScreen() {
         showAlert("Error", response.data.message || "Failed to reset password");
       }
     } catch (error: any) {
-      console.error(error);
+      console.warn("Reset password failed:", error.message || error);
       showAlert("Error", error.response?.data?.message || error.response?.data || "Failed to reset password");
     } finally {
       setIsLoading(false);
@@ -169,8 +170,18 @@ export default function ForgotPasswordScreen() {
                       placeholder="••••••••"
                       value={newPassword}
                       onChangeText={setNewPassword}
-                      secureTextEntry
+                      secureTextEntry={!showPassword}
                     />
+                    <TouchableOpacity 
+                      onPress={() => setShowPassword(!showPassword)}
+                      style={styles.eyeIcon}
+                    >
+                      {showPassword ? (
+                        <EyeOff color="#94a3b8" size={20} />
+                      ) : (
+                        <Eye color="#94a3b8" size={20} />
+                      )}
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -183,8 +194,18 @@ export default function ForgotPasswordScreen() {
                       placeholder="••••••••"
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
-                      secureTextEntry
+                      secureTextEntry={!showPassword}
                     />
+                    <TouchableOpacity 
+                      onPress={() => setShowPassword(!showPassword)}
+                      style={styles.eyeIcon}
+                    >
+                      {showPassword ? (
+                        <EyeOff color="#94a3b8" size={20} />
+                      ) : (
+                        <Eye color="#94a3b8" size={20} />
+                      )}
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -281,6 +302,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: "#1e293b",
+  },
+  eyeIcon: {
+    padding: 8,
+    marginLeft: 8,
   },
   resetButton: {
     backgroundColor: "#1B428A",

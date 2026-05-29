@@ -27,6 +27,9 @@ apiClient.interceptors.request.use(async (config) => {
   return config;
 });
 
+// In-memory cache to prevent redundant fallback profile lookups
+const resolvedProfileCache: Record<string, { hotels: any[]; hotelId?: string }> = {};
+
 // Interceptor to resolve missing hotelId dynamically using the Main service fallback
 apiClient.interceptors.response.use(
   async (response) => {
@@ -37,6 +40,14 @@ apiClient.interceptors.response.use(
         const userData = responseData.data;
         const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
         if (!hotelId && userData.id) {
+          // Check cache first
+          const cached = resolvedProfileCache[userData.id];
+          if (cached) {
+            userData.hotels = cached.hotels;
+            userData.hotelId = cached.hotelId;
+            return response;
+          }
+
           try {
             console.log(`[apiClient Interceptor] Fallback profile fetch for user: ${userData.id}`);
             const token = await AsyncStorage.getItem('authToken');
@@ -57,7 +68,12 @@ apiClient.interceptors.response.use(
               if (fullUser.hotels?.[0]?.id) {
                 userData.hotelId = fullUser.hotels[0].id;
               }
-              console.log(`[apiClient Interceptor] Successfully fetched fallback hotelId: ${userData.hotelId}`);
+              // Cache the resolved data
+              resolvedProfileCache[userData.id] = {
+                hotels: userData.hotels,
+                hotelId: userData.hotelId
+              };
+              console.log(`[apiClient Interceptor] Successfully fetched and cached fallback hotelId: ${userData.hotelId}`);
             }
           } catch (err: any) {
             console.warn("[apiClient Interceptor] Fallback user fetch failed:", err.message || err);

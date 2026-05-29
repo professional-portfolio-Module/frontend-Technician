@@ -96,21 +96,21 @@ export default function ChatDetail() {
               console.log(`[ChatDetail] Chat history fetched successfully. Count: ${history.length}`);
               
               const mapped = history.map((msg: any) => ({
-                id: msg.id,
+                id: msg.id || msg._id || String(Math.random()),
                 text: msg.message,
                 sender: (msg.sender_id === currentU.id ? "me" : "other") as "me" | "other",
                 time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               }));
               setMessages(mapped);
 
-              // 5. Setup polling to fetch new messages every 3 seconds
+              // 5. Setup polling to fetch new messages every 6 seconds to avoid rate limiting
               console.log("[ChatDetail] Initializing background polling...");
               pollInterval = setInterval(async () => {
                 try {
                   const updatedHistory = await messageService.getChatHistory(currentU.id, otherU.id);
                   if (active) {
                     const newMapped = updatedHistory.map((msg: any) => ({
-                      id: msg.id,
+                      id: msg.id || msg._id || String(Math.random()),
                       text: msg.message,
                       sender: (msg.sender_id === currentU.id ? "me" : "other") as "me" | "other",
                       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -120,7 +120,7 @@ export default function ChatDetail() {
                 } catch (pollErr) {
                   console.error("[ChatDetail] Background polling error:", pollErr);
                 }
-              }, 3000);
+              }, 6000);
             } else {
               console.warn("[ChatDetail] Failed to fetch other user from API:", otherUserRes.data);
             }

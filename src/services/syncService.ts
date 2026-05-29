@@ -8,6 +8,7 @@ export interface OfflineMutation {
   taskId: string;
   payload: any;
   timestamp: number;
+  isManual?: boolean;
 }
 
 export const syncService = {
@@ -38,7 +39,7 @@ export const syncService = {
   /**
    * Add a task update/completion to the offline queue
    */
-  async queueMutation(taskId: string, payload: any): Promise<void> {
+  async queueMutation(taskId: string, payload: any, isManual?: boolean): Promise<void> {
     try {
       const queueStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
       const queue: OfflineMutation[] = queueStr ? JSON.parse(queueStr) : [];
@@ -49,6 +50,7 @@ export const syncService = {
         taskId,
         payload,
         timestamp: Date.now(),
+        isManual,
       };
 
       if (existingIndex > -1) {
@@ -62,7 +64,8 @@ export const syncService = {
       // Update the local task cache status to reflect the change immediately offline
       const tasks = await this.getCachedTasks();
       const updatedTasks = tasks.map(t => {
-        if (t.task_id === taskId) {
+        const idToCheck = t.is_manual ? t.manual_task_id : t.task_id;
+        if (idToCheck === taskId) {
           return { ...t, status: payload.status };
         }
         return t;
@@ -89,10 +92,10 @@ export const syncService = {
 
       for (const mutation of queue) {
         try {
-          const response = await apiClient.patch(
-            `/Main/router-backend/api/scheduled-tasks/${mutation.taskId}`,
-            mutation.payload
-          );
+          const response = mutation.isManual
+            ? await apiClient.put(`/Main/router-backend/api/manual-tasks/${mutation.taskId}`, mutation.payload)
+            : await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${mutation.taskId}`, mutation.payload);
+
           if (response.data && response.data.success) {
             syncedCount++;
           } else {

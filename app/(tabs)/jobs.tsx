@@ -10,7 +10,9 @@ export default function JobsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [activeSegment, setActiveSegment] = useState<"scheduled" | "manual">("scheduled");
+  const [scheduledTasks, setScheduledTasks] = useState<any[]>([]);
+  const [manualTasks, setManualTasks] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [userRole, setUserRole] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
@@ -50,24 +52,36 @@ export default function JobsScreen() {
           setUserId(uid);
 
           if (hotelId) {
-            // 2. Fetch all scheduled tasks for this hotel
+            // Fetch Scheduled Tasks
             const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
+            let fetchedScheduled: any[] = [];
             if (tasksRes.data?.success && tasksRes.data.data) {
-              let allTasks = tasksRes.data.data;
+              fetchedScheduled = tasksRes.data.data;
+              await syncService.cacheTasks(fetchedScheduled);
               
-              // Cache tasks locally
-              await syncService.cacheTasks(allTasks);
-
-              // 3. Role-based filtering
               if (role === 'technician') {
-                allTasks = allTasks.filter((t: any) => 
+                fetchedScheduled = fetchedScheduled.filter((t: any) => 
                   t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
                 );
               } else if (role === 'engineer') {
-                allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
+                fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
               }
-              setTasks(allTasks);
             }
+            setScheduledTasks(fetchedScheduled);
+
+            // Fetch Manual Tasks
+            const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
+            let fetchedManual: any[] = [];
+            if (manualRes.data?.success && manualRes.data.data) {
+              fetchedManual = manualRes.data.data;
+              
+              if (role === 'technician') {
+                fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
+              } else if (role === 'engineer') {
+                fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
+              }
+            }
+            setManualTasks(fetchedManual);
           }
         }
       }
@@ -77,8 +91,7 @@ export default function JobsScreen() {
       const cachedTasks = await syncService.getCachedTasks();
       if (cachedTasks && cachedTasks.length > 0) {
         let allTasks = cachedTasks;
-        // Re-apply role filter using local states if we had them, or filter generally
-        const cachedRole = userRole || "technician"; // fallback default
+        const cachedRole = userRole || "technician";
         const cachedUid = userId || "";
         if (cachedRole === 'technician' && cachedUid) {
           allTasks = allTasks.filter((t: any) => 
@@ -87,7 +100,7 @@ export default function JobsScreen() {
         } else if (cachedRole === 'engineer') {
           allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
         }
-        setTasks(allTasks);
+        setScheduledTasks(allTasks);
       }
     } finally {
       setLoading(false);
@@ -104,13 +117,16 @@ export default function JobsScreen() {
     fetchTasks(false);
   };
 
+  // Determine tasks to show based on active segment
+  const tasks = activeSegment === "scheduled" ? scheduledTasks : manualTasks;
+
   // Filter tasks by search query
   const filteredTasks = tasks.filter((task) => {
     const query = searchQuery.toLowerCase();
-    const title = (task.schedule_title || "").toLowerCase();
-    const desc = (task.asset_description || "").toLowerCase();
-    const cardNo = (task.asset_card_no || "").toLowerCase();
-    const loc = (task.asset_location || "").toLowerCase();
+    const title = ((activeSegment === "scheduled" ? task.schedule_title : task.title) || "").toLowerCase();
+    const desc = ((activeSegment === "scheduled" ? task.asset_description : task.description) || "").toLowerCase();
+    const cardNo = ((activeSegment === "scheduled" ? task.asset_card_no : task.card_no) || "").toLowerCase();
+    const loc = ((activeSegment === "scheduled" ? task.asset_location : task.location) || "").toLowerCase();
     return title.includes(query) || desc.includes(query) || cardNo.includes(query) || loc.includes(query);
   });
 
@@ -160,6 +176,26 @@ export default function JobsScreen() {
         />
       </View>
 
+      {/* Segment Switcher */}
+      <View style={styles.segmentContainer}>
+        <TouchableOpacity
+          style={[styles.segmentButton, activeSegment === "scheduled" && styles.activeSegmentButton]}
+          onPress={() => setActiveSegment("scheduled")}
+        >
+          <Text style={[styles.segmentButtonText, activeSegment === "scheduled" && styles.activeSegmentButtonText]}>
+            Scheduled ({scheduledTasks.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segmentButton, activeSegment === "manual" && styles.activeSegmentButton]}
+          onPress={() => setActiveSegment("manual")}
+        >
+          <Text style={[styles.segmentButtonText, activeSegment === "manual" && styles.activeSegmentButtonText]}>
+            Manual ({manualTasks.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {pendingSyncCount > 0 && (
         <View style={styles.syncBanner}>
           <CloudLightning color="#854d0e" size={16} />
@@ -186,29 +222,41 @@ export default function JobsScreen() {
             filteredTasks.map((task) => {
               const statusStyle = getStatusStyle(task.status);
               const priorityStyle = getPriorityStyle(task.priority);
+              const taskId = activeSegment === "scheduled" ? task.task_id : task.manual_task_id;
+              const cardNo = activeSegment === "scheduled" ? task.asset_card_no : task.card_no;
+              const title = activeSegment === "scheduled" ? task.schedule_title : task.title;
+              const assetDesc = activeSegment === "scheduled" ? (task.asset_description || "Unknown Asset") : (task.asset_description || task.title);
+              const location = activeSegment === "scheduled" ? (task.asset_location || "Location not set") : (task.location || "Location not set");
+
               return (
                 <TouchableOpacity 
-                  key={task.task_id} 
+                  key={taskId} 
                   style={styles.jobCard}
-                  onPress={() => router.push(`/machine/${task.asset_card_no}`)}
+                  onPress={() => {
+                    if (activeSegment === "scheduled") {
+                      router.push(`/machine/${cardNo}`);
+                    } else {
+                      router.push(`/machine/${cardNo}?manual_task_id=${taskId}`);
+                    }
+                  }}
                 >
                   <View style={styles.jobInfo}>
                     <View style={styles.titleRow}>
-                      <Text style={styles.jobTitle} numberOfLines={1}>{task.schedule_title}</Text>
+                      <Text style={styles.jobTitle} numberOfLines={1}>{title}</Text>
                       <View style={[styles.priorityBadge, { backgroundColor: priorityStyle.bg }]}>
                         <Text style={[styles.priorityText, { color: priorityStyle.text }]}>{task.priority}</Text>
                       </View>
                     </View>
                     
                     <Text style={styles.assetDesc} numberOfLines={1}>
-                      {task.asset_description || "Unknown Asset"}
+                      {assetDesc}
                     </Text>
-
+ 
                     <View style={styles.detailRow}>
                       <MapPin color="#C5A059" size={14} />
-                      <Text style={styles.detailText}>{task.asset_location || "Location not set"}</Text>
+                      <Text style={styles.detailText}>{location}</Text>
                     </View>
-
+ 
                     <View style={styles.detailRow}>
                       <Calendar color="#C5A059" size={14} />
                       <Text style={styles.detailText}>
@@ -216,7 +264,7 @@ export default function JobsScreen() {
                       </Text>
                     </View>
                   </View>
-
+ 
                   <View style={styles.cardRight}>
                     <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
                       <Text style={[styles.statusText, { color: statusStyle.text }]}>
@@ -423,5 +471,36 @@ const styles = StyleSheet.create({
     color: "#854d0e",
     fontSize: 13,
     fontWeight: "600",
+  },
+  segmentContainer: {
+    flexDirection: "row",
+    backgroundColor: "#e2e8f0",
+    padding: 4,
+    borderRadius: 12,
+    marginHorizontal: 24,
+    marginBottom: 16,
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
+  activeSegmentButton: {
+    backgroundColor: "white",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  segmentButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  activeSegmentButtonText: {
+    color: "#1B428A",
   },
 });

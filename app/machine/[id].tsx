@@ -52,7 +52,7 @@ const decodeBase64 = (str: string): string => {
 };
 
 export default function MachineProfile() {
-  const { id, fromScan } = useLocalSearchParams();
+  const { id, fromScan, manual_task_id } = useLocalSearchParams();
   const router = useRouter();
   const { t } = useTranslation();
   const [machine, setMachine] = useState<any>(null);
@@ -175,51 +175,102 @@ export default function MachineProfile() {
             setMachine(MOCK_MACHINES[id as string] || MOCK_MACHINES["MCH-7829"]);
           }
 
-          // 3. Fetch the pending scheduled task for this asset
+          // 3. Fetch the pending task for this asset
           try {
-            const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
-            if (taskRes.data && taskRes.data.success && taskRes.data.data) {
-              let taskData = taskRes.data.data;
-              
-              // Check technician assignments
-              if (role === 'technician') {
-                const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
-                const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
-                setIsAssignedTech(isAssigned);
+            if (manual_task_id) {
+              const taskRes = await apiClient.get('/Main/router-backend/api/manual-tasks');
+              if (taskRes.data && taskRes.data.success && taskRes.data.data) {
+                const foundTask = taskRes.data.data.find((t: any) => t.manual_task_id === manual_task_id);
+                if (foundTask) {
+                  const normalizedTask = {
+                    ...foundTask,
+                    task_id: foundTask.manual_task_id,
+                    schedule_title: foundTask.title,
+                    asset_card_no: foundTask.card_no,
+                    asset_description: foundTask.asset_description || foundTask.title,
+                    is_manual: true
+                  };
 
-                // Auto transition and record scanner done_by ID only if fromScan is true
-                if (isAssigned && taskData.status === 'pending' && fromScan === 'true') {
+                  if (role === 'technician') {
+                    const isAssigned = foundTask.assigned_to === userId;
+                    setIsAssignedTech(isAssigned);
+
+                    if (isAssigned && foundTask.status === 'pending' && fromScan === 'true') {
+                      try {
+                        await apiClient.put(`/Main/router-backend/api/manual-tasks/${foundTask.manual_task_id}`, {
+                          status: 'in-progress',
+                        });
+                        normalizedTask.status = 'in-progress';
+                      } catch (e) {
+                        console.error("Auto transition to in-progress failed:", e);
+                      }
+                    }
+                  } else if (role === 'engineer') {
+                    setIsAssignedTech(true);
+                    if (foundTask.priority === 'emergency' && foundTask.status === 'in-progress') {
+                      try {
+                        await apiClient.put(`/Main/router-backend/api/manual-tasks/${foundTask.manual_task_id}`, {
+                          status: 'under_review',
+                        });
+                        normalizedTask.status = 'under_review';
+                      } catch (e) {
+                        console.error("Auto transition to under_review failed:", e);
+                      }
+                    }
+                  }
+
+                  setScheduledTask(normalizedTask);
+                } else {
+                  setScheduledTask(null);
+                }
+              } else {
+                setScheduledTask(null);
+              }
+            } else {
+              const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
+              if (taskRes.data && taskRes.data.success && taskRes.data.data) {
+                let taskData = taskRes.data.data;
+                
+                // Check technician assignments
+                if (role === 'technician') {
+                  const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
+                  const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                  setIsAssignedTech(isAssigned);
+
+                  // Auto transition and record scanner done_by ID only if fromScan is true
+                  if (isAssigned && taskData.status === 'pending' && fromScan === 'true') {
+                    try {
+                      await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
+                        status: 'in-progress',
+                        done_by: userId
+                      });
+                      taskData.status = 'in-progress';
+                      taskData.done_by = userId;
+                    } catch (e) {
+                      console.error("Auto transition to in-progress failed:", e);
+                    }
+                  }
+                } else if (role === 'engineer' && taskData.priority === 'emergency' && taskData.status === 'in-progress') {
                   try {
+                    // Auto transition and record reviewer checked_by ID
                     await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
-                      status: 'in-progress',
-                      done_by: userId
+                      status: 'under_review',
+                      checked_by: userId
                     });
-                    taskData.status = 'in-progress';
-                    taskData.done_by = userId;
+                    taskData.status = 'under_review';
+                    taskData.checked_by = userId;
                   } catch (e) {
-                    console.error("Auto transition to in-progress failed:", e);
+                    console.error("Auto transition to under_review failed:", e);
                   }
                 }
-              } else if (role === 'engineer' && taskData.priority === 'emergency' && taskData.status === 'in-progress') {
-                try {
-                  // Auto transition and record reviewer checked_by ID
-                  await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${taskData.task_id}`, {
-                    status: 'under_review',
-                    checked_by: userId
-                  });
-                  taskData.status = 'under_review';
-                  taskData.checked_by = userId;
-                } catch (e) {
-                  console.error("Auto transition to under_review failed:", e);
-                }
+                
+                setScheduledTask(taskData);
+              } else {
+                setScheduledTask(null);
               }
-              
-              setScheduledTask(taskData);
-            } else {
-              setScheduledTask(null);
             }
           } catch (taskErr) {
-            console.error("Failed to fetch pending scheduled task from API:", taskErr);
+            console.error("Failed to fetch pending task from API:", taskErr);
             // Local fallback
             const cachedTasks = await syncService.getCachedTasks();
             const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
@@ -349,9 +400,13 @@ export default function MachineProfile() {
       done_by: currentUserId
     };
 
+    const isManual = scheduledTask.is_manual;
+
     try {
       try {
-        const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+        const res = isManual
+          ? await apiClient.put(`/Main/router-backend/api/manual-tasks/${scheduledTask.task_id}`, payload)
+          : await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
         if (res.data.success) {
           Alert.alert("Success", "Task started! Status is now 'in-progress'.");
           setScheduledTask({ ...scheduledTask, status: "in-progress", done_by: currentUserId });
@@ -360,7 +415,7 @@ export default function MachineProfile() {
         }
       } catch (err) {
         console.warn("API update failed, queueing start task offline:", err);
-        await syncService.queueMutation(scheduledTask.task_id, payload);
+        await syncService.queueMutation(scheduledTask.task_id, payload, isManual);
         Alert.alert("Offline Sync Queued", "Task started offline. Status will update to 'in-progress' when network is restored.");
         setScheduledTask({ ...scheduledTask, status: "in-progress", done_by: currentUserId });
       }
@@ -378,7 +433,7 @@ export default function MachineProfile() {
     }
 
     if (!scheduledTask) {
-      Alert.alert("No Pending Task", "There are no pending scheduled maintenance tasks for this machine.");
+      Alert.alert("No Pending Task", "There are no pending maintenance tasks for this machine.");
       return;
     }
 
@@ -388,6 +443,7 @@ export default function MachineProfile() {
     }
 
     setUpdateLoading(true);
+    const isManual = scheduledTask.is_manual;
     try {
       let cloudinaryUrl = null;
       if (evidenceImage) {
@@ -399,11 +455,19 @@ export default function MachineProfile() {
       };
 
       if (userRole === "technician") {
-        payload.technician_remarks = remarks.trim() || "Maintenance task completed by technician.";
+        if (isManual) {
+          payload.tech_remarks = remarks.trim() || "Maintenance task completed by technician.";
+        } else {
+          payload.technician_remarks = remarks.trim() || "Maintenance task completed by technician.";
+        }
         payload.attachment_url = cloudinaryUrl || scheduledTask.attachment_url;
         payload.done_by = currentUserId;
       } else if (userRole === "engineer") {
-        payload.engineer_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
+        if (isManual) {
+          payload.eng_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
+        } else {
+          payload.engineer_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
+        }
         payload.checked_by = currentUserId;
         if (cloudinaryUrl) {
           payload.attachment_url = cloudinaryUrl;
@@ -411,7 +475,9 @@ export default function MachineProfile() {
       }
 
       try {
-        const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+        const res = isManual
+          ? await apiClient.put(`/Main/router-backend/api/manual-tasks/${scheduledTask.task_id}`, payload)
+          : await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
 
         if (res.data.success) {
           Alert.alert("Success", `Maintenance task status successfully updated to '${targetStatus}'!`);
@@ -422,13 +488,13 @@ export default function MachineProfile() {
         }
       } catch (err) {
         console.warn("API update failed, queueing mutation offline:", err);
-        await syncService.queueMutation(scheduledTask.task_id, payload);
+        await syncService.queueMutation(scheduledTask.task_id, payload, isManual);
         Alert.alert("Offline Sync Queued", "You are currently offline. Your checklist updates have been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
         setScheduledTask(null);
       }
     } catch (error) {
-      console.error("Failed to update scheduled task:", error);
+      console.error("Failed to update task:", error);
       Alert.alert("Error", "An unexpected error occurred while completing the task.");
     } finally {
       setUpdateLoading(false);
@@ -442,7 +508,7 @@ export default function MachineProfile() {
     }
 
     if (!scheduledTask) {
-      Alert.alert("No Pending Task", "There are no pending scheduled maintenance tasks for this machine.");
+      Alert.alert("No Pending Task", "There are no pending maintenance tasks for this machine.");
       return;
     }
 
@@ -452,19 +518,27 @@ export default function MachineProfile() {
     }
 
     setUpdateLoading(true);
+    const isManual = scheduledTask.is_manual;
     try {
       const cloudinaryUrl = await uploadImageToCloudinary(evidenceImage);
 
-      const payload = {
+      const payload: any = {
         priority: "emergency",
         status: "in-progress", // Keeps status as in-progress (technician check initiated)
-        technician_remarks: remarks.trim() || "Technician unable to complete task. Escalated to Emergency.",
         attachment_url: cloudinaryUrl,
         done_by: currentUserId
       };
 
+      if (isManual) {
+        payload.tech_remarks = remarks.trim() || "Technician unable to complete task. Escalated to Emergency.";
+      } else {
+        payload.technician_remarks = remarks.trim() || "Technician unable to complete task. Escalated to Emergency.";
+      }
+
       try {
-        const res = await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
+        const res = isManual
+          ? await apiClient.put(`/Main/router-backend/api/manual-tasks/${scheduledTask.task_id}`, payload)
+          : await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${scheduledTask.task_id}`, payload);
 
         if (res.data.success) {
           Alert.alert("Escalated", "Task successfully escalated to Emergency! Engineers have been notified.");
@@ -475,13 +549,13 @@ export default function MachineProfile() {
         }
       } catch (err) {
         console.warn("API escalation failed, queueing mutation offline:", err);
-        await syncService.queueMutation(scheduledTask.task_id, payload);
+        await syncService.queueMutation(scheduledTask.task_id, payload, isManual);
         Alert.alert("Offline Sync Queued", "You are currently offline. Your emergency escalation request has been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: "escalated" });
         setScheduledTask(null);
       }
     } catch (error) {
-      console.error("Failed to escalate scheduled task:", error);
+      console.error("Failed to escalate task:", error);
       Alert.alert("Error", "An unexpected error occurred while escalating the task.");
     } finally {
       setUpdateLoading(false);

@@ -116,6 +116,8 @@ export default function MachineProfile() {
             const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
             if (localTask) {
               setScheduledTask(localTask);
+              setRemarks(localTask.technician_remarks || "");
+              setEvidenceImage(localTask.attachment_url || null);
               if (role === 'technician') {
                 const hasAssignments = localTask.assigned_technicians && localTask.assigned_technicians.length > 0;
                 let isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
@@ -219,6 +221,8 @@ export default function MachineProfile() {
                   }
 
                   setScheduledTask(normalizedTask);
+                  setRemarks(normalizedTask.tech_remarks || "");
+                  setEvidenceImage(normalizedTask.attachment_url || null);
                 } else {
                   setScheduledTask(null);
                 }
@@ -270,6 +274,8 @@ export default function MachineProfile() {
                 }
                 
                 setScheduledTask(taskData);
+                setRemarks(taskData.technician_remarks || "");
+                setEvidenceImage(taskData.attachment_url || null);
               } else {
                 setScheduledTask(null);
               }
@@ -280,6 +286,10 @@ export default function MachineProfile() {
             const cachedTasks = await syncService.getCachedTasks();
             const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
             setScheduledTask(localTask || null);
+            if (localTask) {
+              setRemarks(localTask.technician_remarks || "");
+              setEvidenceImage(localTask.attachment_url || null);
+            }
           }
         } catch (error) {
           console.warn("Failed to fetch machine details from API, fallback to local cache:", error);
@@ -302,6 +312,8 @@ export default function MachineProfile() {
               }
             });
             setScheduledTask(localTask);
+            setRemarks(localTask.technician_remarks || "");
+            setEvidenceImage(localTask.attachment_url || null);
           } else {
             setError("Failed to fetch asset details from backend API and no local cache was found.");
             setScheduledTask(null);
@@ -609,6 +621,7 @@ export default function MachineProfile() {
   const isEmergency = scheduledTask?.priority === "emergency";
   const showTechRemarksForEngineer = userRole === "engineer" && scheduledTask?.technician_remarks;
   const isPendingTask = userRole === "technician" && scheduledTask && scheduledTask.status === "pending";
+  const isCompletedOrReview = scheduledTask && (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -740,22 +753,24 @@ export default function MachineProfile() {
             <Text style={styles.sectionTitle}>
               {userRole === "engineer" ? "Engineer Remarks & Actions" : "Maintenance Notes / Remarks"}
             </Text>
-            <View style={[styles.inputWrapper, isPendingTask && { opacity: 0.5 }]}>
+            <View style={[styles.inputWrapper, (isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review') && { opacity: 0.5 }]}>
               <TextInput
                 style={styles.remarksInput}
                 placeholder={
                   isPendingTask
                     ? "Locked: Change status to in-progress to start..."
-                    : userRole === "engineer"
-                      ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
-                      : "Write observations, actions taken, or replacement parts used..."
+                    : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
+                      ? "No remarks provided for this task."
+                      : userRole === "engineer"
+                        ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
+                        : "Write observations, actions taken, or replacement parts used..."
                 }
                 placeholderTextColor="#94a3b8"
                 multiline
                 numberOfLines={4}
                 value={remarks}
                 onChangeText={setRemarks}
-                editable={!isPendingTask}
+                editable={!isPendingTask && scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review'}
               />
             </View>
           </View>
@@ -767,24 +782,26 @@ export default function MachineProfile() {
             <Text style={styles.sectionTitle}>Work Evidence</Text>
             {!evidenceImage ? (
               <TouchableOpacity 
-                style={[styles.uploadBox, (!scheduledTask || isPendingTask) && styles.disabledUploadBox]} 
+                style={[styles.uploadBox, (!scheduledTask || isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review') && styles.disabledUploadBox]} 
                 onPress={handlePickEvidence}
-                disabled={!scheduledTask || isPendingTask}
+                disabled={!scheduledTask || isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review'}
               >
-                <Camera color={(scheduledTask && !isPendingTask) ? "#1B428A" : "#cbd5e1"} size={32} />
-                <Text style={[styles.uploadText, (!scheduledTask || isPendingTask) && styles.disabledUploadText]}>Add Photo Evidence</Text>
+                <Camera color={(scheduledTask && !isPendingTask && scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review') ? "#1B428A" : "#cbd5e1"} size={32} />
+                <Text style={[styles.uploadText, (!scheduledTask || isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review') && styles.disabledUploadText]}>Add Photo Evidence</Text>
                 <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.evidenceContainer}>
                 <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
-                <TouchableOpacity 
-                  style={styles.removeEvidence} 
-                  onPress={() => setEvidenceImage(null)}
-                  disabled={isPendingTask}
-                >
-                  <X color="white" size={16} />
-                </TouchableOpacity>
+                {scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review' && (
+                  <TouchableOpacity 
+                    style={styles.removeEvidence} 
+                    onPress={() => setEvidenceImage(null)}
+                    disabled={isPendingTask}
+                  >
+                    <X color="white" size={16} />
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

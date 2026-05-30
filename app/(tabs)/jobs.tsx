@@ -249,7 +249,7 @@ export default function JobsScreen() {
                     </View>
                     
                     <Text style={styles.assetDesc} numberOfLines={1}>
-                      {assetDesc}
+                      {cardNo ? `[${cardNo}] ` : ""}{assetDesc}
                     </Text>
  
                     <View style={styles.detailRow}>

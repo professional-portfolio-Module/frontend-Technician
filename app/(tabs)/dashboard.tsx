@@ -201,6 +201,7 @@ export default function Dashboard() {
               <Text style={styles.jobTitle}>{activeJob.is_manual ? activeJob.title : activeJob.schedule_title}</Text>
               <Text style={styles.jobLocation}>
                 {activeJob.is_manual ? activeJob.location : activeJob.asset_location || "Location not set"}
+                {(activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no) ? ` (${activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no})` : ""}
               </Text>
               
               <View style={styles.cardFooter}>
@@ -252,7 +253,7 @@ export default function Dashboard() {
                   <View style={styles.flex1}>
                     <Text style={styles.upcomingTitle} numberOfLines={1}>{title}</Text>
                     <Text style={styles.upcomingSubtitle} numberOfLines={1}>
-                      {location} • Due {task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/A"}
+                      {cardNo ? `[${cardNo}] ` : ""}{location} • Due {task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/A"}
                     </Text>
                   </View>
                   <View style={styles.priorityBadge}>

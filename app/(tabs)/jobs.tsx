@@ -253,7 +253,9 @@ export default function JobsScreen() {
                 >
                   <View style={styles.jobInfo}>
                     <View style={styles.titleRow}>
-                      <Text style={styles.jobTitle} numberOfLines={1}>{title}</Text>
+                      <Text style={styles.jobTitle} numberOfLines={1}>
+                        {cardNo ? `${cardNo} - ` : ""}{title}
+                      </Text>
                       <View style={[styles.priorityBadge, { backgroundColor: priorityStyle.bg }]}>
                         <Text style={[styles.priorityText, { color: priorityStyle.text }]}>{task.priority}</Text>
                       </View>

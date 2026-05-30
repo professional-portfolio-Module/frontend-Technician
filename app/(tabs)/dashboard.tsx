@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import apiClient from "../../src/services/api";
@@ -18,101 +18,115 @@ export default function Dashboard() {
   const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        const sessionRes = await apiClient.get("/auth/session");
-        if (sessionRes.data.success && sessionRes.data.data?.user_name) {
-          const username = sessionRes.data.data.user_name;
-          setUserName(username);
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
 
-          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
-          if (profileRes.data.success && profileRes.data.data) {
-            const userData = profileRes.data.data;
-            if (userData.name) {
-              setUserName(userData.name);
-            }
-            const role = userData.role ? userData.role.toLowerCase() : "";
-            const uid = userData.id;
-            const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
+      const fetchDashboardData = async () => {
+        try {
+          setLoading(true);
+          const sessionRes = await apiClient.get("/auth/session");
+          if (!isActive) return;
+          if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+            const username = sessionRes.data.data.user_name;
+            setUserName(username);
 
-            console.log("DASHBOARD DEBUG - USER INFO:", { username, role, uid, hotelId });
-
-            if (hotelId) {
-              // 1. Fetch Scheduled Tasks
-              const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
-              let fetchedScheduled: any[] = [];
-              if (tasksRes.data?.success && tasksRes.data.data) {
-                fetchedScheduled = tasksRes.data.data;
-                console.log("DASHBOARD DEBUG - RAW SCHEDULED TASKS COUNT:", fetchedScheduled.length);
-                if (role === 'technician') {
-                  fetchedScheduled = fetchedScheduled.filter((t: any) =>
-                    t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
-                  );
-                  console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR TECH:", fetchedScheduled.length);
-                } else if (role === 'engineer') {
-                  fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
-                  console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR ENG:", fetchedScheduled.length);
-                }
+            const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+            if (!isActive) return;
+            if (profileRes.data.success && profileRes.data.data) {
+              const userData = profileRes.data.data;
+              if (userData.name) {
+                setUserName(userData.name);
               }
+              const role = userData.role ? userData.role.toLowerCase() : "";
+              const uid = userData.id;
+              const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
 
-              // 2. Fetch Manual Tasks
-              const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
-              let fetchedManual: any[] = [];
-              if (manualRes.data?.success && manualRes.data.data) {
-                fetchedManual = manualRes.data.data;
-                console.log("DASHBOARD DEBUG - RAW MANUAL TASKS COUNT:", fetchedManual.length);
-                if (role === 'technician') {
-                  fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
-                  console.log("DASHBOARD DEBUG - FILTERED MANUAL TASKS FOR TECH:", fetchedManual.length);
-                } else if (role === 'engineer') {
-                  fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
-                  console.log("DASHBOARD DEBUG - FILTERED MANUAL TASKS FOR ENG:", fetchedManual.length);
+              console.log("DASHBOARD DEBUG - USER INFO:", { username, role, uid, hotelId });
+
+              if (hotelId) {
+                // 1. Fetch Scheduled Tasks
+                const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
+                if (!isActive) return;
+                let fetchedScheduled: any[] = [];
+                if (tasksRes.data?.success && tasksRes.data.data) {
+                  fetchedScheduled = tasksRes.data.data;
+                  console.log("DASHBOARD DEBUG - RAW SCHEDULED TASKS COUNT:", fetchedScheduled.length);
+                  if (role === 'technician') {
+                    fetchedScheduled = fetchedScheduled.filter((t: any) =>
+                      t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
+                    );
+                    console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR TECH:", fetchedScheduled.length);
+                  } else if (role === 'engineer') {
+                    fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
+                    console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR ENG:", fetchedScheduled.length);
+                  }
                 }
+
+                // 2. Fetch Manual Tasks
+                const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
+                if (!isActive) return;
+                let fetchedManual: any[] = [];
+                if (manualRes.data?.success && manualRes.data.data) {
+                  fetchedManual = manualRes.data.data;
+                  console.log("DASHBOARD DEBUG - RAW MANUAL TASKS COUNT:", fetchedManual.length);
+                  if (role === 'technician') {
+                    fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
+                    console.log("DASHBOARD DEBUG - FILTERED MANUAL TASKS FOR TECH:", fetchedManual.length);
+                  } else if (role === 'engineer') {
+                    fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
+                    console.log("DASHBOARD DEBUG - FILTERED MANUAL TASKS FOR ENG:", fetchedManual.length);
+                  }
+                }
+
+                // 3. Compute stats
+                const allTasks = [
+                  ...fetchedScheduled.map(t => ({ ...t, is_manual: false })),
+                  ...fetchedManual.map(t => ({ ...t, is_manual: true }))
+                ];
+
+                const pending = allTasks.filter(t => 
+                  t.status === 'pending' || 
+                  (t.status === 'in-progress' && (!t.done_by || t.done_by === uid))
+                ).length;
+                const completed = allTasks.filter(t => t.status === 'completed').length;
+
+                setPendingJobsCount(pending);
+                setCompletedJobsCount(completed);
+
+                // 4. Find active job (in-progress)
+                const active = allTasks.find(t => t.status === 'in-progress' && (!t.done_by || t.done_by === uid));
+                setActiveJob(active || null);
+
+                // 5. Get upcoming pending tasks
+                const upcoming = allTasks
+                  .filter(t => t.status === 'pending')
+                  .sort((a, b) => {
+                    const dateA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+                    const dateB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+                    return dateA - dateB;
+                  })
+                  .slice(0, 2);
+                setUpcomingJobs(upcoming);
               }
-
-              // 3. Compute stats
-              const allTasks = [
-                ...fetchedScheduled.map(t => ({ ...t, is_manual: false })),
-                ...fetchedManual.map(t => ({ ...t, is_manual: true }))
-              ];
-
-              const pending = allTasks.filter(t => 
-                t.status === 'pending' || 
-                (t.status === 'in-progress' && (!t.done_by || t.done_by === uid))
-              ).length;
-              const completed = allTasks.filter(t => t.status === 'completed').length;
-
-              setPendingJobsCount(pending);
-              setCompletedJobsCount(completed);
-
-              // 4. Find active job (in-progress)
-              const active = allTasks.find(t => t.status === 'in-progress' && (!t.done_by || t.done_by === uid));
-              setActiveJob(active || null);
-
-              // 5. Get upcoming pending tasks
-              const upcoming = allTasks
-                .filter(t => t.status === 'pending')
-                .sort((a, b) => {
-                  const dateA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-                  const dateB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-                  return dateA - dateB;
-                })
-                .slice(0, 2);
-              setUpcomingJobs(upcoming);
             }
           }
+        } catch (err) {
+          console.error("Failed to load dashboard data:", err);
+        } finally {
+          if (isActive) {
+            setLoading(false);
+          }
         }
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      };
 
-    fetchDashboardData();
-  }, []);
+      fetchDashboardData();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   return (
     <SafeAreaView style={styles.container}>

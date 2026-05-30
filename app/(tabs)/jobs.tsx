@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Search, Filter, Clock, MapPin, ChevronRight, AlertTriangle, CheckCircle2, Info, Calendar, CloudLightning } from "lucide-react-native";
 import apiClient from "../../src/services/api";
 import { syncService } from "../../src/services/syncService";
@@ -108,9 +108,11 @@ export default function JobsScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchTasks();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

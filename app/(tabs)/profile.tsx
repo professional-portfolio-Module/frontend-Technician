@@ -47,6 +47,9 @@ export default function ProfileScreen() {
           const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
           if (profileRes.data.success && profileRes.data.data) {
             const userData = profileRes.data.data;
+            if (userData.name) {
+              setUserName(userData.name);
+            }
             setUserEmail(userData.email || "");
             setUserRole(userData.role ? userData.role.charAt(0).toUpperCase() + userData.role.slice(1).toLowerCase() : "Technician");
 

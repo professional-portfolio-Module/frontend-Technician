@@ -30,6 +30,9 @@ export default function Dashboard() {
           const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
           if (profileRes.data.success && profileRes.data.data) {
             const userData = profileRes.data.data;
+            if (userData.name) {
+              setUserName(userData.name);
+            }
             const role = userData.role ? userData.role.toLowerCase() : "";
             const uid = userData.id;
             const hotelId = userData.hotelId || userData.hotels?.[0]?.id;

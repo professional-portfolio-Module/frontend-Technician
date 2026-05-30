@@ -644,7 +644,11 @@ export default function MachineProfile() {
           {!isAssignedTech && (
             <View style={[styles.warningBox, { marginTop: 12 }]}>
               <AlertTriangle color="#ef4444" size={20} />
-              <Text style={styles.warningText}>You are not assigned to this maintenance task. Only assigned technicians can perform this check.</Text>
+              <Text style={styles.warningText}>
+                {scheduledTask && scheduledTask.status === 'in-progress' && scheduledTask.done_by && scheduledTask.done_by !== currentUserId
+                  ? "This task is currently being worked on by another technician. You cannot modify it."
+                  : "You are not assigned to this maintenance task. Only assigned technicians can perform this check."}
+              </Text>
             </View>
           )}
           {isPendingTask && (

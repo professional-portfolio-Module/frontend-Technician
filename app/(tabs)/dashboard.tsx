@@ -47,16 +47,9 @@ export default function Dashboard() {
                 fetchedScheduled = tasksRes.data.data;
                 console.log("DASHBOARD DEBUG - RAW SCHEDULED TASKS COUNT:", fetchedScheduled.length);
                 if (role === 'technician') {
-                  fetchedScheduled = fetchedScheduled.filter((t: any) => {
-                    const isAssigned = t.assigned_technicians?.some((tech: any) => tech.user_id === uid);
-                    if (!isAssigned) return false;
-                    
-                    // Hide tasks that are in-progress by other technicians
-                    if (t.status === 'in-progress' && t.done_by && t.done_by !== uid) {
-                      return false;
-                    }
-                    return true;
-                  });
+                  fetchedScheduled = fetchedScheduled.filter((t: any) =>
+                    t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
+                  );
                   console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR TECH:", fetchedScheduled.length);
                 } else if (role === 'engineer') {
                   fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
@@ -85,14 +78,17 @@ export default function Dashboard() {
                 ...fetchedManual.map(t => ({ ...t, is_manual: true }))
               ];
 
-              const pending = allTasks.filter(t => t.status === 'pending' || t.status === 'in-progress').length;
+              const pending = allTasks.filter(t => 
+                t.status === 'pending' || 
+                (t.status === 'in-progress' && (!t.done_by || t.done_by === uid))
+              ).length;
               const completed = allTasks.filter(t => t.status === 'completed').length;
 
               setPendingJobsCount(pending);
               setCompletedJobsCount(completed);
 
               // 4. Find active job (in-progress)
-              const active = allTasks.find(t => t.status === 'in-progress');
+              const active = allTasks.find(t => t.status === 'in-progress' && (!t.done_by || t.done_by === uid));
               setActiveJob(active || null);
 
               // 5. Get upcoming pending tasks

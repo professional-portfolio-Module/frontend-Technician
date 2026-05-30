@@ -725,6 +725,14 @@ export default function MachineProfile() {
               </Text>
             </View>
           )}
+          {scheduledTask && scheduledTask.priority === 'emergency' && userRole === 'technician' && (
+            <View style={[styles.warningBox, { marginTop: 12, backgroundColor: "#fff5f5", borderColor: "#f87171" }]}>
+              <AlertTriangle color="#ef4444" size={20} />
+              <Text style={[styles.warningText, { color: "#991b1b" }]}>
+                This task has been escalated to Emergency and is read-only.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Pending Scheduled Task Section */}
@@ -784,7 +792,13 @@ export default function MachineProfile() {
             <Text style={styles.sectionTitle}>
               {userRole === "engineer" ? "Engineer Remarks & Actions" : "Maintenance Notes / Remarks"}
             </Text>
-            <View style={[styles.inputWrapper, (isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review') && { opacity: 0.5 }]}>
+            <View style={[
+              styles.inputWrapper, 
+              (isPendingTask || 
+               scheduledTask.status === 'completed' || 
+               scheduledTask.status === 'under_review' || 
+               (userRole === 'technician' && scheduledTask.priority === 'emergency')) && { opacity: 0.5 }
+            ]}>
               <TextInput
                 style={styles.remarksInput}
                 placeholder={
@@ -792,16 +806,23 @@ export default function MachineProfile() {
                     ? "Locked: Change status to in-progress to start..."
                     : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
                       ? "No remarks provided for this task."
-                      : userRole === "engineer"
-                        ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
-                        : "Write observations, actions taken, or replacement parts used..."
+                      : (userRole === 'technician' && scheduledTask.priority === 'emergency')
+                        ? "Task escalated to emergency. Remarks are read-only."
+                        : userRole === "engineer"
+                          ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
+                          : "Write observations, actions taken, or replacement parts used..."
                 }
                 placeholderTextColor="#94a3b8"
                 multiline
                 numberOfLines={4}
                 value={remarks}
                 onChangeText={setRemarks}
-                editable={!isPendingTask && scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review'}
+                editable={
+                  !isPendingTask && 
+                  scheduledTask.status !== 'completed' && 
+                  scheduledTask.status !== 'under_review' && 
+                  !(userRole === 'technician' && scheduledTask.priority === 'emergency')
+                }
               />
             </View>
           </View>
@@ -813,18 +834,55 @@ export default function MachineProfile() {
             <Text style={styles.sectionTitle}>Work Evidence</Text>
             {!evidenceImage ? (
               <TouchableOpacity 
-                style={[styles.uploadBox, (!scheduledTask || isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review') && styles.disabledUploadBox]} 
+                style={[
+                  styles.uploadBox, 
+                  (!scheduledTask || 
+                   isPendingTask || 
+                   scheduledTask.status === 'completed' || 
+                   scheduledTask.status === 'under_review' || 
+                   (userRole === 'technician' && scheduledTask.priority === 'emergency')) && styles.disabledUploadBox
+                ]} 
                 onPress={handlePickEvidence}
-                disabled={!scheduledTask || isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review'}
+                disabled={
+                  !scheduledTask || 
+                  isPendingTask || 
+                  scheduledTask.status === 'completed' || 
+                  scheduledTask.status === 'under_review' || 
+                  (userRole === 'technician' && scheduledTask.priority === 'emergency')
+                }
               >
-                <Camera color={(scheduledTask && !isPendingTask && scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review') ? "#1B428A" : "#cbd5e1"} size={32} />
-                <Text style={[styles.uploadText, (!scheduledTask || isPendingTask || scheduledTask.status === 'completed' || scheduledTask.status === 'under_review') && styles.disabledUploadText]}>Add Photo Evidence</Text>
+                <Camera 
+                  color={
+                    (scheduledTask && 
+                     !isPendingTask && 
+                     scheduledTask.status !== 'completed' && 
+                     scheduledTask.status !== 'under_review' && 
+                     !(userRole === 'technician' && scheduledTask.priority === 'emergency')) 
+                      ? "#1B428A" 
+                      : "#cbd5e1"
+                  } 
+                  size={32} 
+                />
+                <Text 
+                  style={[
+                    styles.uploadText, 
+                    (!scheduledTask || 
+                     isPendingTask || 
+                     scheduledTask.status === 'completed' || 
+                     scheduledTask.status === 'under_review' || 
+                     (userRole === 'technician' && scheduledTask.priority === 'emergency')) && styles.disabledUploadText
+                  ]}
+                >
+                  Add Photo Evidence
+                </Text>
                 <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.evidenceContainer}>
                 <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
-                {scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review' && (
+                {scheduledTask.status !== 'completed' && 
+                 scheduledTask.status !== 'under_review' && 
+                 !(userRole === 'technician' && scheduledTask.priority === 'emergency') && (
                   <TouchableOpacity 
                     style={styles.removeEvidence} 
                     onPress={() => setEvidenceImage(null)}
@@ -883,6 +941,11 @@ export default function MachineProfile() {
             <View style={[styles.updateBtn, { backgroundColor: "#f59e0b" }]}>
               <Clock color="white" size={20} />
               <Text style={styles.updateBtnText}>Task Under Review</Text>
+            </View>
+          ) : scheduledTask.priority === 'emergency' && userRole === "technician" ? (
+            <View style={[styles.updateBtn, { backgroundColor: "#f87171" }]}>
+              <AlertTriangle color="white" size={20} />
+              <Text style={styles.updateBtnText}>Task Escalated to Emergency</Text>
             </View>
           ) : isPendingTask ? (
             <TouchableOpacity 

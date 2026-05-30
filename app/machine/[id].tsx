@@ -42,7 +42,7 @@ const isValidUuid = (id: string | null | undefined): boolean => {
 };
 
 export default function MachineProfile() {
-  const { id, fromScan, manual_task_id } = useLocalSearchParams();
+  const { id, fromScan, manual_task_id, scheduled_task_id } = useLocalSearchParams();
   const router = useRouter();
   const { t } = useTranslation();
   const [machine, setMachine] = useState<any>(null);
@@ -65,6 +65,7 @@ export default function MachineProfile() {
         // 1. Fetch user ID and Role
         let role = "";
         let userId = "";
+        let hotelId = "";
         try {
           const sessionRes = await apiClient.get("/auth/session");
           if (sessionRes.data.success && sessionRes.data.data?.user_name) {
@@ -73,6 +74,7 @@ export default function MachineProfile() {
             if (profileRes.data.success && profileRes.data.data?.id) {
               userId = profileRes.data.data.id;
               role = profileRes.data.data.role ? profileRes.data.data.role.toLowerCase() : "";
+              hotelId = profileRes.data.data.hotelId || profileRes.data.data.hotels?.[0]?.id || "";
               setCurrentUserId(userId);
               setUserRole(role);
             }
@@ -230,10 +232,25 @@ export default function MachineProfile() {
                 setScheduledTask(null);
               }
             } else {
-              const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
-              if (taskRes.data && taskRes.data.success && taskRes.data.data) {
-                let taskData = taskRes.data.data;
-                
+              let taskData = null;
+              if (scheduled_task_id) {
+                try {
+                  const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
+                  if (tasksRes.data && tasksRes.data.success && tasksRes.data.data) {
+                    taskData = tasksRes.data.data.find((t: any) => t.task_id === scheduled_task_id);
+                  }
+                } catch (err) {
+                  console.error("Failed to fetch specific scheduled task by ID:", err);
+                }
+              }
+              if (!taskData) {
+                const taskRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks/pending-by-asset?card_no=${cardNo}`);
+                if (taskRes.data && taskRes.data.success && taskRes.data.data) {
+                  taskData = taskRes.data.data;
+                }
+              }
+
+              if (taskData) {
                 // Check technician assignments
                 if (role === 'technician') {
                   const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
@@ -638,9 +655,23 @@ export default function MachineProfile() {
         {/* Machine Main Card */}
         <View style={styles.mainCard}>
           <View style={styles.badgeRow}>
-            <View style={[styles.statusBadge, machine.status === "check completed" ? styles.successBadge : styles.pendingBadge]}>
-              <Text style={[styles.statusText, machine.status === "check completed" ? styles.successText : styles.pendingText]}>
-                {machine.status === "check completed" ? t("check_completed").toUpperCase() : t("not_checked").toUpperCase()}
+            <View style={[
+              styles.statusBadge, 
+              (machine.status === "check completed" || scheduledTask?.status === 'completed' || scheduledTask?.status === 'under_review') 
+                ? styles.successBadge 
+                : styles.pendingBadge
+            ]}>
+              <Text style={[
+                styles.statusText, 
+                (machine.status === "check completed" || scheduledTask?.status === 'completed' || scheduledTask?.status === 'under_review') 
+                  ? styles.successText 
+                  : styles.pendingText
+              ]}>
+                {(machine.status === "check completed" || scheduledTask?.status === 'completed')
+                  ? t("check_completed").toUpperCase()
+                  : scheduledTask?.status === 'under_review'
+                    ? "UNDER REVIEW"
+                    : t("not_checked").toUpperCase()}
               </Text>
             </View>
             <View style={styles.idBadge}>

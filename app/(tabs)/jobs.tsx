@@ -245,7 +245,7 @@ export default function JobsScreen() {
                   style={styles.jobCard}
                   onPress={() => {
                     if (activeSegment === "scheduled") {
-                      router.push(`/machine/${cardNo}`);
+                      router.push(`/machine/${cardNo}?scheduled_task_id=${taskId}`);
                     } else {
                       router.push(`/machine/${cardNo}?manual_task_id=${taskId}`);
                     }

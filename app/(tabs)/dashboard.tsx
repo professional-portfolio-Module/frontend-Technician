@@ -215,8 +215,10 @@ export default function Dashboard() {
               activeOpacity={0.9}
               onPress={() => {
                 const cardNo = activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no;
-                const manualTaskIdParam = activeJob.is_manual ? `?manual_task_id=${activeJob.manual_task_id}` : "";
-                router.push(`/machine/${cardNo}${manualTaskIdParam}`);
+                const param = activeJob.is_manual 
+                  ? `?manual_task_id=${activeJob.manual_task_id}` 
+                  : `?scheduled_task_id=${activeJob.task_id}`;
+                router.push(`/machine/${cardNo}${param}`);
               }}
               style={styles.activeJobCard}
             >
@@ -272,8 +274,10 @@ export default function Dashboard() {
                   key={task.is_manual ? `m-${taskId}-${idx}` : `s-${taskId}-${idx}`}
                   style={styles.upcomingCard}
                   onPress={() => {
-                    const manualTaskIdParam = task.is_manual ? `?manual_task_id=${taskId}` : "";
-                    router.push(`/machine/${cardNo}${manualTaskIdParam}`);
+                    const param = task.is_manual 
+                      ? `?manual_task_id=${taskId}` 
+                      : `?scheduled_task_id=${taskId}`;
+                    router.push(`/machine/${cardNo}${param}`);
                   }}
                 >
                   <View style={styles.upcomingIconContainer}>

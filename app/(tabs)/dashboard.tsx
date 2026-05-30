@@ -47,9 +47,16 @@ export default function Dashboard() {
                 fetchedScheduled = tasksRes.data.data;
                 console.log("DASHBOARD DEBUG - RAW SCHEDULED TASKS COUNT:", fetchedScheduled.length);
                 if (role === 'technician') {
-                  fetchedScheduled = fetchedScheduled.filter((t: any) =>
-                    t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
-                  );
+                  fetchedScheduled = fetchedScheduled.filter((t: any) => {
+                    const isAssigned = t.assigned_technicians?.some((tech: any) => tech.user_id === uid);
+                    if (!isAssigned) return false;
+                    
+                    // Hide tasks that are in-progress by other technicians
+                    if (t.status === 'in-progress' && t.done_by && t.done_by !== uid) {
+                      return false;
+                    }
+                    return true;
+                  });
                   console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR TECH:", fetchedScheduled.length);
                 } else if (role === 'engineer') {
                   fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');

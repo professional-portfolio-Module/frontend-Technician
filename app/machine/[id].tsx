@@ -118,7 +118,13 @@ export default function MachineProfile() {
               setScheduledTask(localTask);
               if (role === 'technician') {
                 const hasAssignments = localTask.assigned_technicians && localTask.assigned_technicians.length > 0;
-                const isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                let isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                
+                // If the task is already in-progress, only the technician who claimed it (done_by) can access it
+                if (localTask.status === 'in-progress' && localTask.done_by && localTask.done_by !== userId) {
+                  isAssigned = false;
+                }
+                
                 setIsAssignedTech(isAssigned);
                 
                 // Auto transition and queue scanner done_by ID offline only if fromScan is true
@@ -227,7 +233,13 @@ export default function MachineProfile() {
                 // Check technician assignments
                 if (role === 'technician') {
                   const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
-                  const isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                  let isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
+                  
+                  // If the task is already in-progress, only the technician who claimed it (done_by) can access it
+                  if (taskData.status === 'in-progress' && taskData.done_by && taskData.done_by !== userId) {
+                    isAssigned = false;
+                  }
+                  
                   setIsAssignedTech(isAssigned);
 
                   // Auto transition and record scanner done_by ID only if fromScan is true
@@ -782,7 +794,11 @@ export default function MachineProfile() {
           !isAssignedTech ? (
             <View style={[styles.updateBtn, styles.disabledBtn]}>
               <AlertTriangle color="white" size={20} />
-              <Text style={styles.updateBtnText}>Not Assigned to You</Text>
+              <Text style={styles.updateBtnText}>
+                {scheduledTask.status === 'in-progress' && scheduledTask.done_by && scheduledTask.done_by !== userId
+                  ? "Claimed by Another Tech"
+                  : "Not Assigned to You"}
+              </Text>
             </View>
           ) : isPendingTask ? (
             <TouchableOpacity 

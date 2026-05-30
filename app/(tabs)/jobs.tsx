@@ -60,9 +60,16 @@ export default function JobsScreen() {
               await syncService.cacheTasks(fetchedScheduled);
 
               if (role === 'technician') {
-                fetchedScheduled = fetchedScheduled.filter((t: any) =>
-                  t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
-                );
+                fetchedScheduled = fetchedScheduled.filter((t: any) => {
+                  const isAssigned = t.assigned_technicians?.some((tech: any) => tech.user_id === uid);
+                  if (!isAssigned) return false;
+                  
+                  // Hide tasks that are in-progress by other technicians
+                  if (t.status === 'in-progress' && t.done_by && t.done_by !== uid) {
+                    return false;
+                  }
+                  return true;
+                });
               } else if (role === 'engineer') {
                 fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
               }
@@ -94,9 +101,16 @@ export default function JobsScreen() {
         const cachedRole = userRole || "technician";
         const cachedUid = userId || "";
         if (cachedRole === 'technician' && cachedUid) {
-          allTasks = allTasks.filter((t: any) =>
-            t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid)
-          );
+          allTasks = allTasks.filter((t: any) => {
+            const isAssigned = t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid);
+            if (!isAssigned) return false;
+            
+            // Hide tasks that are in-progress by other technicians
+            if (t.status === 'in-progress' && t.done_by && t.done_by !== cachedUid) {
+              return false;
+            }
+            return true;
+          });
         } else if (cachedRole === 'engineer') {
           allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
         }

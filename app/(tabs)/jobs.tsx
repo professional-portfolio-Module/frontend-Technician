@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, RefreshControl } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, RefreshControl, DeviceEventEmitter } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Search, Filter, Clock, MapPin, ChevronRight, AlertTriangle, CheckCircle2, Info, Calendar, CloudLightning } from "lucide-react-native";
@@ -110,7 +110,16 @@ export default function JobsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchTasks();
+      fetchTasks(true);
+
+      // Listen for local task update events
+      const sub = DeviceEventEmitter.addListener("taskStatusChanged", () => {
+        fetchTasks(false);
+      });
+
+      return () => {
+        sub.remove();
+      };
     }, [])
   );
 

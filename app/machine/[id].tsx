@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, TextInput } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, TextInput, DeviceEventEmitter } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle, QrCode } from "lucide-react-native";
@@ -415,6 +415,7 @@ export default function MachineProfile() {
         if (res.data.success) {
           Alert.alert("Success", "Task started! Status is now 'in-progress'.");
           setScheduledTask({ ...scheduledTask, status: "in-progress", done_by: currentUserId });
+          DeviceEventEmitter.emit("taskStatusChanged");
         } else {
           Alert.alert("Error", "Failed to start the task.");
         }
@@ -423,6 +424,7 @@ export default function MachineProfile() {
         await syncService.queueMutation(scheduledTask.task_id, payload, isManual);
         Alert.alert("Offline Sync Queued", "Task started offline. Status will update to 'in-progress' when network is restored.");
         setScheduledTask({ ...scheduledTask, status: "in-progress", done_by: currentUserId });
+        DeviceEventEmitter.emit("taskStatusChanged");
       }
     } catch (error) {
       console.error("Failed to start task:", error);
@@ -488,6 +490,7 @@ export default function MachineProfile() {
           Alert.alert("Success", `Maintenance task status successfully updated to '${targetStatus}'!`);
           setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
           setScheduledTask(null); // Clear active task
+          DeviceEventEmitter.emit("taskStatusChanged");
         } else {
           Alert.alert("Error", "Failed to update task status in database.");
         }
@@ -497,6 +500,7 @@ export default function MachineProfile() {
         Alert.alert("Offline Sync Queued", "You are currently offline. Your checklist updates have been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
         setScheduledTask(null);
+        DeviceEventEmitter.emit("taskStatusChanged");
       }
     } catch (error) {
       console.error("Failed to update task:", error);
@@ -549,6 +553,7 @@ export default function MachineProfile() {
           Alert.alert("Escalated", "Task successfully escalated to Emergency! Engineers have been notified.");
           setMachine({ ...machine, status: "escalated" });
           setScheduledTask(null);
+          DeviceEventEmitter.emit("taskStatusChanged");
         } else {
           Alert.alert("Error", "Failed to escalate task.");
         }
@@ -558,6 +563,7 @@ export default function MachineProfile() {
         Alert.alert("Offline Sync Queued", "You are currently offline. Your emergency escalation request has been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: "escalated" });
         setScheduledTask(null);
+        DeviceEventEmitter.emit("taskStatusChanged");
       }
     } catch (error) {
       console.error("Failed to escalate task:", error);

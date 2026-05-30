@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator, DeviceEventEmitter } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Bell, Calendar, TrendingUp, CheckCircle2, Clock, AlertCircle, MessageSquare, QrCode } from "lucide-react-native";
@@ -22,9 +22,11 @@ export default function Dashboard() {
     useCallback(() => {
       let isActive = true;
 
-      const fetchDashboardData = async () => {
+      const fetchDashboardData = async (isBackground = false) => {
         try {
-          setLoading(true);
+          if (!isBackground) {
+            setLoading(true);
+          }
           const sessionRes = await apiClient.get("/auth/session");
           if (!isActive) return;
           if (sessionRes.data.success && sessionRes.data.data?.user_name) {
@@ -122,8 +124,14 @@ export default function Dashboard() {
 
       fetchDashboardData();
 
+      // Listen for local task update events
+      const sub = DeviceEventEmitter.addListener("taskStatusChanged", () => {
+        fetchDashboardData(true);
+      });
+
       return () => {
         isActive = false;
+        sub.remove();
       };
     }, [])
   );

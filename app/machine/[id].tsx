@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, TextInput, DeviceEventEmitter } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle, QrCode } from "lucide-react-native";
+import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle, QrCode, Clock } from "lucide-react-native";
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
@@ -665,6 +665,22 @@ export default function MachineProfile() {
               </Text>
             </View>
           )}
+          {scheduledTask && scheduledTask.status === 'completed' && (
+            <View style={[styles.warningBox, { marginTop: 12, backgroundColor: "#ecfdf5", borderColor: "#10b981" }]}>
+              <CheckCircle2 color="#10b981" size={20} />
+              <Text style={[styles.warningText, { color: "#065f46" }]}>
+                This maintenance task has already been completed previously.
+              </Text>
+            </View>
+          )}
+          {scheduledTask && scheduledTask.status === 'under_review' && (
+            <View style={[styles.warningBox, { marginTop: 12, backgroundColor: "#fffbeb", borderColor: "#f59e0b" }]}>
+              <Info color="#f59e0b" size={20} />
+              <Text style={[styles.warningText, { color: "#92400e" }]}>
+                This maintenance task is currently under review by the engineer.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Pending Scheduled Task Section */}
@@ -809,6 +825,16 @@ export default function MachineProfile() {
                   ? "Claimed by Another Tech"
                   : "Not Assigned to You"}
               </Text>
+            </View>
+          ) : scheduledTask.status === 'completed' ? (
+            <View style={[styles.updateBtn, { backgroundColor: "#10b981" }]}>
+              <CheckCircle2 color="white" size={20} />
+              <Text style={styles.updateBtnText}>Task Completed Previously</Text>
+            </View>
+          ) : scheduledTask.status === 'under_review' && userRole === "technician" ? (
+            <View style={[styles.updateBtn, { backgroundColor: "#f59e0b" }]}>
+              <Clock color="white" size={20} />
+              <Text style={styles.updateBtnText}>Task Under Review</Text>
             </View>
           ) : isPendingTask ? (
             <TouchableOpacity 

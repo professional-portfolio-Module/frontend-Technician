@@ -795,7 +795,7 @@ export default function MachineProfile() {
             <View style={[styles.updateBtn, styles.disabledBtn]}>
               <AlertTriangle color="white" size={20} />
               <Text style={styles.updateBtnText}>
-                {scheduledTask.status === 'in-progress' && scheduledTask.done_by && scheduledTask.done_by !== userId
+                {scheduledTask.status === 'in-progress' && scheduledTask.done_by && scheduledTask.done_by !== currentUserId
                   ? "Claimed by Another Tech"
                   : "Not Assigned to You"}
               </Text>

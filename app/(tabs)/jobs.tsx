@@ -47,7 +47,7 @@ export default function JobsScreen() {
           const uid = userData.id;
           const hotels = userData.hotels || [];
           const hotelId = hotels[0]?.id;
-          
+
           setUserRole(role);
           setUserId(uid);
 
@@ -58,9 +58,9 @@ export default function JobsScreen() {
             if (tasksRes.data?.success && tasksRes.data.data) {
               fetchedScheduled = tasksRes.data.data;
               await syncService.cacheTasks(fetchedScheduled);
-              
+
               if (role === 'technician') {
-                fetchedScheduled = fetchedScheduled.filter((t: any) => 
+                fetchedScheduled = fetchedScheduled.filter((t: any) =>
                   t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
                 );
               } else if (role === 'engineer') {
@@ -74,7 +74,7 @@ export default function JobsScreen() {
             let fetchedManual: any[] = [];
             if (manualRes.data?.success && manualRes.data.data) {
               fetchedManual = manualRes.data.data;
-              
+
               if (role === 'technician') {
                 fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
               } else if (role === 'engineer') {
@@ -94,7 +94,7 @@ export default function JobsScreen() {
         const cachedRole = userRole || "technician";
         const cachedUid = userId || "";
         if (cachedRole === 'technician' && cachedUid) {
-          allTasks = allTasks.filter((t: any) => 
+          allTasks = allTasks.filter((t: any) =>
             t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid)
           );
         } else if (cachedRole === 'engineer') {
@@ -211,8 +211,8 @@ export default function JobsScreen() {
           <Text style={styles.loadingText}>Fetching tasks...</Text>
         </View>
       ) : (
-        <ScrollView 
-          style={styles.scroll} 
+        <ScrollView
+          style={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#1B428A"]} />
@@ -229,8 +229,8 @@ export default function JobsScreen() {
               const location = activeSegment === "scheduled" ? (task.asset_location || "Location not set") : (task.location || "Location not set");
 
               return (
-                <TouchableOpacity 
-                  key={taskId} 
+                <TouchableOpacity
+                  key={taskId}
                   style={styles.jobCard}
                   onPress={() => {
                     if (activeSegment === "scheduled") {
@@ -247,16 +247,16 @@ export default function JobsScreen() {
                         <Text style={[styles.priorityText, { color: priorityStyle.text }]}>{task.priority}</Text>
                       </View>
                     </View>
-                    
+
                     <Text style={styles.assetDesc} numberOfLines={1}>
-                      {cardNo ? `[${cardNo}] ` : ""}{assetDesc}
+                      {assetDesc}
                     </Text>
- 
+
                     <View style={styles.detailRow}>
                       <MapPin color="#C5A059" size={14} />
                       <Text style={styles.detailText}>{location}</Text>
                     </View>
- 
+
                     <View style={styles.detailRow}>
                       <Calendar color="#C5A059" size={14} />
                       <Text style={styles.detailText}>
@@ -264,7 +264,7 @@ export default function JobsScreen() {
                       </Text>
                     </View>
                   </View>
- 
+
                   <View style={styles.cardRight}>
                     <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
                       <Text style={[styles.statusText, { color: statusStyle.text }]}>
@@ -281,7 +281,7 @@ export default function JobsScreen() {
               <Info color="#64748b" size={32} style={styles.noTaskIcon} />
               <Text style={styles.noTaskTitle}>No Maintenance Tasks Found</Text>
               <Text style={styles.noTaskText}>
-                {userRole === "engineer" 
+                {userRole === "engineer"
                   ? "There are no pending emergency tasks for review at this hotel."
                   : "You do not have any active or pending maintenance tasks assigned to you."}
               </Text>

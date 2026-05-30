@@ -44,7 +44,7 @@ export default function Dashboard() {
                 fetchedScheduled = tasksRes.data.data;
                 console.log("DASHBOARD DEBUG - RAW SCHEDULED TASKS COUNT:", fetchedScheduled.length);
                 if (role === 'technician') {
-                  fetchedScheduled = fetchedScheduled.filter((t: any) => 
+                  fetchedScheduled = fetchedScheduled.filter((t: any) =>
                     t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
                   );
                   console.log("DASHBOARD DEBUG - FILTERED SCHEDULED TASKS FOR TECH:", fetchedScheduled.length);
@@ -77,7 +77,7 @@ export default function Dashboard() {
 
               const pending = allTasks.filter(t => t.status === 'pending' || t.status === 'in-progress').length;
               const completed = allTasks.filter(t => t.status === 'completed').length;
-              
+
               setPendingJobsCount(pending);
               setCompletedJobsCount(completed);
 
@@ -124,13 +124,13 @@ export default function Dashboard() {
               <Text style={styles.userName}>{userName}</Text>
             </View>
             <View style={styles.headerActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.headerBtn}
                 onPress={() => router.push("/chat")}
               >
                 <MessageSquare color="#1B428A" size={22} />
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.headerBtn}
                 onPress={() => router.push("/notifications")}
               >
@@ -158,7 +158,7 @@ export default function Dashboard() {
           </View>
 
           {/* Quick Scan Section */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.scanHeroCard}
             onPress={() => router.push("/(tabs)/scan")}
             activeOpacity={0.9}
@@ -181,9 +181,9 @@ export default function Dashboard() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Active Job</Text>
           </View>
-          
+
           {activeJob ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               activeOpacity={0.9}
               onPress={() => {
                 const cardNo = activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no;
@@ -197,13 +197,12 @@ export default function Dashboard() {
                   <Text style={styles.badgeText}>In Progress</Text>
                 </View>
               </View>
-              
+
               <Text style={styles.jobTitle}>{activeJob.is_manual ? activeJob.title : activeJob.schedule_title}</Text>
               <Text style={styles.jobLocation}>
                 {activeJob.is_manual ? activeJob.location : activeJob.asset_location || "Location not set"}
-                {(activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no) ? ` (${activeJob.is_manual ? activeJob.card_no : activeJob.asset_card_no})` : ""}
               </Text>
-              
+
               <View style={styles.cardFooter}>
                 <View style={styles.deadlineIcon}>
                   <Calendar color="#1B428A" size={14} />
@@ -237,10 +236,10 @@ export default function Dashboard() {
               const taskId = task.is_manual ? task.manual_task_id : task.task_id;
               const title = task.is_manual ? task.title : task.schedule_title;
               const location = task.is_manual ? task.location : task.asset_location || "Location not set";
-              
+
               return (
-                <TouchableOpacity 
-                  key={task.is_manual ? `m-${taskId}-${idx}` : `s-${taskId}-${idx}`} 
+                <TouchableOpacity
+                  key={task.is_manual ? `m-${taskId}-${idx}` : `s-${taskId}-${idx}`}
                   style={styles.upcomingCard}
                   onPress={() => {
                     const manualTaskIdParam = task.is_manual ? `?manual_task_id=${taskId}` : "";
@@ -253,7 +252,7 @@ export default function Dashboard() {
                   <View style={styles.flex1}>
                     <Text style={styles.upcomingTitle} numberOfLines={1}>{title}</Text>
                     <Text style={styles.upcomingSubtitle} numberOfLines={1}>
-                      {cardNo ? `[${cardNo}] ` : ""}{location} • Due {task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/A"}
+                      {location} • Due {task.due_date ? new Date(task.due_date).toLocaleDateString() : "N/A"}
                     </Text>
                   </View>
                   <View style={styles.priorityBadge}>
@@ -267,7 +266,7 @@ export default function Dashboard() {
               <Text style={styles.emptyUpcomingText}>No upcoming pending schedule.</Text>
             </View>
           )}
-          
+
           <View style={{ height: 40 }} />
         </ScrollView>
       )}

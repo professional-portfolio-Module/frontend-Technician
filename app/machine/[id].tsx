@@ -473,6 +473,13 @@ export default function MachineProfile() {
       return;
     }
 
+    // Require remarks for expired task late completions
+    const isExpired = scheduledTask.status === 'expired';
+    if (isExpired && !remarks.trim()) {
+      Alert.alert("Remarks Required", "Please explain why this task was not completed before the due date. Remarks are mandatory for late completions.");
+      return;
+    }
+
     if (userRole === "technician" && !evidenceImage) {
       Alert.alert("Evidence Required", "Please upload photo evidence before completing the task.");
       return;
@@ -639,6 +646,7 @@ export default function MachineProfile() {
   const showTechRemarksForEngineer = userRole === "engineer" && scheduledTask?.technician_remarks;
   const isPendingTask = userRole === "technician" && scheduledTask && scheduledTask.status === "pending";
   const isCompletedOrReview = scheduledTask && (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review');
+  const isExpiredTask = scheduledTask && scheduledTask.status === 'expired';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -733,6 +741,14 @@ export default function MachineProfile() {
               </Text>
             </View>
           )}
+          {isExpiredTask && (
+            <View style={[styles.warningBox, { marginTop: 12, backgroundColor: "#fef3c7", borderColor: "#f59e0b" }]}>
+              <Clock color="#d97706" size={20} />
+              <Text style={[styles.warningText, { color: "#92400e" }]}>
+                This task has expired because it was not completed before the due date. You can still complete it as a late completion, but remarks explaining the delay are mandatory. Escalation is no longer available.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Pending Scheduled Task Section */}
@@ -797,12 +813,14 @@ export default function MachineProfile() {
               (isPendingTask || 
                scheduledTask.status === 'completed' || 
                scheduledTask.status === 'under_review' || 
-               (userRole === 'technician' && scheduledTask.priority === 'emergency')) && { opacity: 0.5 }
+               (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) && { opacity: 0.5 }
             ]}>
               <TextInput
                 style={styles.remarksInput}
                 placeholder={
-                  isPendingTask
+                  isExpiredTask
+                    ? "REQUIRED: Explain why this task was not completed before the due date..."
+                    : isPendingTask
                     ? "Locked: Change status to in-progress to start..."
                     : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
                       ? "No remarks provided for this task."
@@ -818,10 +836,11 @@ export default function MachineProfile() {
                 value={remarks}
                 onChangeText={setRemarks}
                 editable={
-                  !isPendingTask && 
+                  isExpiredTask ||
+                  (!isPendingTask && 
                   scheduledTask.status !== 'completed' && 
                   scheduledTask.status !== 'under_review' && 
-                  !(userRole === 'technician' && scheduledTask.priority === 'emergency')
+                  !(userRole === 'technician' && scheduledTask.priority === 'emergency'))
                 }
               />
             </View>
@@ -840,7 +859,7 @@ export default function MachineProfile() {
                    isPendingTask || 
                    scheduledTask.status === 'completed' || 
                    scheduledTask.status === 'under_review' || 
-                   (userRole === 'technician' && scheduledTask.priority === 'emergency')) && styles.disabledUploadBox
+                   (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) && styles.disabledUploadBox
                 ]} 
                 onPress={handlePickEvidence}
                 disabled={
@@ -848,7 +867,7 @@ export default function MachineProfile() {
                   isPendingTask || 
                   scheduledTask.status === 'completed' || 
                   scheduledTask.status === 'under_review' || 
-                  (userRole === 'technician' && scheduledTask.priority === 'emergency')
+                  (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)
                 }
               >
                 <Camera 
@@ -857,7 +876,7 @@ export default function MachineProfile() {
                      !isPendingTask && 
                      scheduledTask.status !== 'completed' && 
                      scheduledTask.status !== 'under_review' && 
-                     !(userRole === 'technician' && scheduledTask.priority === 'emergency')) 
+                     !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) 
                       ? "#1B428A" 
                       : "#cbd5e1"
                   } 
@@ -870,7 +889,7 @@ export default function MachineProfile() {
                      isPendingTask || 
                      scheduledTask.status === 'completed' || 
                      scheduledTask.status === 'under_review' || 
-                     (userRole === 'technician' && scheduledTask.priority === 'emergency')) && styles.disabledUploadText
+                     (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) && styles.disabledUploadText
                   ]}
                 >
                   Add Photo Evidence
@@ -882,7 +901,7 @@ export default function MachineProfile() {
                 <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
                 {scheduledTask.status !== 'completed' && 
                  scheduledTask.status !== 'under_review' && 
-                 !(userRole === 'technician' && scheduledTask.priority === 'emergency') && (
+                 !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask) && (
                   <TouchableOpacity 
                     style={styles.removeEvidence} 
                     onPress={() => setEvidenceImage(null)}
@@ -946,6 +965,28 @@ export default function MachineProfile() {
             <View style={[styles.updateBtn, { backgroundColor: "#f87171" }]}>
               <AlertTriangle color="white" size={20} />
               <Text style={styles.updateBtnText}>Task Escalated to Emergency</Text>
+            </View>
+          ) : isExpiredTask && userRole === "technician" ? (
+            <View style={styles.actionButtonContainer}>
+              <TouchableOpacity 
+                style={[
+                  styles.actionBtn, 
+                  { backgroundColor: "#d97706" }, 
+                  (!evidenceImage || !remarks.trim() || updateLoading) && styles.disabledBtn
+                ]} 
+                onPress={() => handleUpdateStatus("completed")}
+                disabled={!evidenceImage || !remarks.trim() || updateLoading}
+              >
+                {updateLoading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <Clock color="white" size={18} />
+                    <Text style={styles.actionBtnText}>Complete as Late</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text style={{ fontSize: 11, color: '#92400e', fontStyle: 'italic', textAlign: 'center', marginTop: 4 }}>
+                Remarks and photo evidence are mandatory for late completions.
+              </Text>
             </View>
           ) : isPendingTask ? (
             <TouchableOpacity 

@@ -279,9 +279,9 @@ export default function JobsScreen() {
                   </View>
 
                   <View style={styles.cardRight}>
-                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                      <Text style={[styles.statusText, { color: statusStyle.text }]}>
-                        {task.status.replace("_", " ")}
+                    <View style={[styles.statusBadge, { backgroundColor: task.was_expired && task.status === 'completed' ? 'rgba(217, 119, 6, 0.12)' : statusStyle.bg }]}>
+                      <Text style={[styles.statusText, { color: task.was_expired && task.status === 'completed' ? '#d97706' : statusStyle.text }]}>
+                        {task.was_expired && task.status === 'completed' ? 'completed late' : task.status.replace("_", " ")}
                       </Text>
                     </View>
                     <ChevronRight color="#cbd5e1" size={20} />

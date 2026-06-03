@@ -28,7 +28,7 @@ export default function RegisterScreen() {
   useEffect(() => {
     const fetchHotels = async () => {
       try {
-        const res = await apiClient.get("/Main/router-backend/api/hotels");
+        const res = await apiClient.get("/AuthForward/auth/hotels");
         if (res.data?.success && res.data.data) {
           setHotels(res.data.data);
           if (res.data.data.length > 0) {
@@ -153,16 +153,17 @@ export default function RegisterScreen() {
                   <Picker
                     selectedValue={hotelId}
                     onValueChange={(itemValue) => setHotelId(itemValue)}
-                    style={{ flex: 1, backgroundColor: 'transparent' }}
+                    style={{ flex: 1, backgroundColor: 'transparent', color: '#1e293b' }}
+                    dropdownIconColor="#1B428A"
                     enabled={!hotelsLoading}
                   >
                     {hotelsLoading ? (
-                      <Picker.Item label="Loading hotels..." value="" />
+                      <Picker.Item label="Loading hotels..." value="" color="#94a3b8" />
                     ) : hotels.length === 0 ? (
-                      <Picker.Item label="No hotels available" value="" />
+                      <Picker.Item label="No hotels available" value="" color="#94a3b8" />
                     ) : (
                       hotels.map((hotel) => (
-                        <Picker.Item key={hotel.id} label={`${hotel.name} - ${hotel.city || 'N/A'}`} value={hotel.id} />
+                        <Picker.Item key={hotel.id} label={`${hotel.name} - ${hotel.city || 'N/A'}`} value={hotel.id} color="#1e293b" />
                       ))
                     )}
                   </Picker>

@@ -17,6 +17,7 @@ export default function JobsScreen() {
   const [userRole, setUserRole] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
   const fetchTasks = async (showLoadingIndicator = true) => {
     if (showLoadingIndicator) setLoading(true);
@@ -131,8 +132,14 @@ export default function JobsScreen() {
   // Determine tasks to show based on active segment
   const tasks = activeSegment === "scheduled" ? scheduledTasks : manualTasks;
 
-  // Filter tasks by search query
+  // Filter tasks by status and search query
   const filteredTasks = tasks.filter((task) => {
+    // 1. Status Filter
+    if (selectedStatus !== "all") {
+      if (task.status !== selectedStatus) return false;
+    }
+
+    // 2. Search Query Filter
     const query = searchQuery.toLowerCase();
     const title = ((activeSegment === "scheduled" ? task.schedule_title : task.title) || "").toLowerCase();
     const desc = ((activeSegment === "scheduled" ? task.asset_description : task.description) || "").toLowerCase();
@@ -191,20 +198,65 @@ export default function JobsScreen() {
       <View style={styles.segmentContainer}>
         <TouchableOpacity
           style={[styles.segmentButton, activeSegment === "scheduled" && styles.activeSegmentButton]}
-          onPress={() => setActiveSegment("scheduled")}
+          onPress={() => {
+            setActiveSegment("scheduled");
+            setSelectedStatus("all");
+          }}
         >
           <Text style={[styles.segmentButtonText, activeSegment === "scheduled" && styles.activeSegmentButtonText]}>
-            Scheduled ({scheduledTasks.length})
+            Scheduled ({scheduledTasks.filter(t => t.status !== 'expired').length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.segmentButton, activeSegment === "manual" && styles.activeSegmentButton]}
-          onPress={() => setActiveSegment("manual")}
+          onPress={() => {
+            setActiveSegment("manual");
+            setSelectedStatus("all");
+          }}
         >
           <Text style={[styles.segmentButtonText, activeSegment === "manual" && styles.activeSegmentButtonText]}>
-            Manual ({manualTasks.length})
+            Manual ({manualTasks.filter(t => t.status !== 'expired').length})
           </Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Status Filter Scroll */}
+      <View style={styles.statusFilterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statusFilterScroll}
+        >
+          {[
+            { label: "All", value: "all" },
+            { label: "Pending", value: "pending" },
+            { label: "In Progress", value: "in-progress" },
+            { label: "Under Review", value: "under_review" },
+            { label: "Completed", value: "completed" },
+            { label: "Expired", value: "expired" },
+          ].map((status) => {
+            const isActive = selectedStatus === status.value;
+            return (
+              <TouchableOpacity
+                key={status.value}
+                style={[
+                  styles.statusFilterPill,
+                  isActive && styles.activeStatusFilterPill
+                ]}
+                onPress={() => setSelectedStatus(status.value)}
+              >
+                <Text
+                  style={[
+                    styles.statusFilterText,
+                    isActive && styles.activeStatusFilterText
+                  ]}
+                >
+                  {status.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {pendingSyncCount > 0 && (
@@ -515,5 +567,32 @@ const styles = StyleSheet.create({
   },
   activeSegmentButtonText: {
     color: "#1B428A",
+  },
+  statusFilterContainer: {
+    marginBottom: 16,
+  },
+  statusFilterScroll: {
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  statusFilterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  activeStatusFilterPill: {
+    backgroundColor: "#1B428A",
+    borderColor: "#1B428A",
+  },
+  statusFilterText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  activeStatusFilterText: {
+    color: "white",
   },
 });

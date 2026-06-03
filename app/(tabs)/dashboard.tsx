@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [userName, setUserName] = useState("Loading...");
   const [pendingJobsCount, setPendingJobsCount] = useState(0);
   const [completedJobsCount, setCompletedJobsCount] = useState(0);
+  const [expiredJobsCount, setExpiredJobsCount] = useState(0);
   const [activeJob, setActiveJob] = useState<any>(null);
   const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,9 +93,11 @@ export default function Dashboard() {
                   (t.status === 'in-progress' && (!t.done_by || t.done_by === uid))
                 ).length;
                 const completed = allTasks.filter(t => t.status === 'completed').length;
+                const expired = allTasks.filter(t => t.status === 'expired').length;
 
                 setPendingJobsCount(pending);
                 setCompletedJobsCount(completed);
+                setExpiredJobsCount(expired);
 
                 // 4. Find active job (in-progress)
                 const active = allTasks.find(t => t.status === 'in-progress' && (!t.done_by || t.done_by === uid));
@@ -173,7 +176,7 @@ export default function Dashboard() {
               <View style={styles.statIconContainer}>
                 <TrendingUp color="white" size={20} />
               </View>
-              <Text style={styles.statLabelLight}>Pending Jobs</Text>
+              <Text style={styles.statLabelLight}>Pending</Text>
               <Text style={styles.statValueLight}>{pendingJobsCount}</Text>
             </View>
             <View style={[styles.statCard, styles.whiteCard]}>
@@ -182,6 +185,13 @@ export default function Dashboard() {
               </View>
               <Text style={styles.statLabelDark}>Completed</Text>
               <Text style={styles.statValueDark}>{completedJobsCount}</Text>
+            </View>
+            <View style={[styles.statCard, styles.redCard]}>
+              <View style={styles.statIconContainerAlert}>
+                <AlertCircle color="#ef4444" size={20} />
+              </View>
+              <Text style={styles.statLabelDark}>Expired</Text>
+              <Text style={styles.statValueAlert}>{expiredJobsCount}</Text>
             </View>
           </View>
 
@@ -368,13 +378,13 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
-    gap: 16,
+    gap: 10,
     marginBottom: 32,
   },
   statCard: {
     flex: 1,
-    padding: 16,
-    borderRadius: 24,
+    padding: 12,
+    borderRadius: 20,
     elevation: 4,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
@@ -390,6 +400,12 @@ const styles = StyleSheet.create({
     borderColor: "#f1f5f9",
     shadowColor: "#cbd5e1",
   },
+  redCard: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#fee2e2",
+    shadowColor: "#fca5a5",
+  },
   statIconContainer: {
     width: 40,
     height: 40,
@@ -403,6 +419,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     backgroundColor: "rgba(197, 160, 89, 0.1)",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  statIconContainerAlert: {
+    width: 40,
+    height: 40,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -427,6 +452,11 @@ const styles = StyleSheet.create({
   },
   statValueDark: {
     color: "#1B428A",
+    fontSize: 24,
+    fontWeight: "bold",
+  },
+  statValueAlert: {
+    color: "#ef4444",
     fontSize: 24,
     fontWeight: "bold",
   },

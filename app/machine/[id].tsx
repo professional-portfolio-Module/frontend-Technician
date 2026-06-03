@@ -384,7 +384,7 @@ export default function MachineProfile() {
   const launchCamera = async () => {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.4,
     });
     if (!result.canceled) setEvidenceImage(result.assets[0].uri);
   };
@@ -392,7 +392,7 @@ export default function MachineProfile() {
   const launchLibrary = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.4,
     });
     if (!result.canceled) setEvidenceImage(result.assets[0].uri);
   };

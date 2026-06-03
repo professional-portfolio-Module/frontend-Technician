@@ -53,6 +53,7 @@ export default function MachineProfile() {
   const [isNear, setIsNear] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
+  const [evidenceBase64, setEvidenceBase64] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -385,45 +386,42 @@ export default function MachineProfile() {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       quality: 0.4,
+      base64: true,
     });
-    if (!result.canceled) setEvidenceImage(result.assets[0].uri);
+    if (!result.canceled) {
+      setEvidenceImage(result.assets[0].uri);
+      setEvidenceBase64(result.assets[0].base64 || null);
+    }
   };
 
   const launchLibrary = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       quality: 0.4,
+      base64: true,
     });
-    if (!result.canceled) setEvidenceImage(result.assets[0].uri);
+    if (!result.canceled) {
+      setEvidenceImage(result.assets[0].uri);
+      setEvidenceBase64(result.assets[0].base64 || null);
+    }
   };
 
-  const uploadImageToCloudinary = async (localUri: string): Promise<string> => {
-    const cloudName = "dg1surpxu";
-    const uploadPreset = "avvtqcth";
-
-    const formData = new FormData();
-    const filename = localUri.split('/').pop() || "evidence.jpg";
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : `image/jpeg`;
-
-    formData.append("file", { uri: localUri, name: filename, type } as any);
-    formData.append("upload_preset", uploadPreset);
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Cloudinary upload failed: ${errorText}`);
+  const uploadImageToLocalBackend = async (localUri: string, base64Data: string | null): Promise<string> => {
+    if (!base64Data) {
+      throw new Error("No image data available for upload");
     }
 
-    const result = await response.json();
-    return result.secure_url;
+    const filename = localUri.split('/').pop() || "evidence.jpg";
+    const response = await apiClient.post("/Main/router-backend/api/upload", {
+      image: base64Data,
+      filename: filename
+    });
+
+    if (!response.data || !response.data.success || !response.data.data?.url) {
+      throw new Error("Server image upload failed");
+    }
+
+    return response.data.data.url;
   };
 
   const handleStartTask = async () => {
@@ -487,35 +485,35 @@ export default function MachineProfile() {
 
     setUpdateLoading(true);
     const isManual = scheduledTask.is_manual;
+    
+    // Prepare base payload
+    const payload: any = {
+      status: targetStatus
+    };
+
+    if (userRole === "technician") {
+      if (isManual) {
+        payload.tech_remarks = remarks.trim() || "Maintenance task completed by technician.";
+      } else {
+        payload.technician_remarks = remarks.trim() || "Maintenance task completed by technician.";
+      }
+      payload.done_by = isValidUuid(currentUserId) ? currentUserId : null;
+    } else if (userRole === "engineer") {
+      if (isManual) {
+        payload.eng_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
+      } else {
+        payload.engineer_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
+      }
+      payload.checked_by = isValidUuid(currentUserId) ? currentUserId : null;
+    }
+
     try {
-      let cloudinaryUrl = null;
+      let localUrl = null;
       if (evidenceImage) {
-        cloudinaryUrl = await uploadImageToCloudinary(evidenceImage);
+        localUrl = await uploadImageToLocalBackend(evidenceImage, evidenceBase64);
       }
 
-      const payload: any = {
-        status: targetStatus
-      };
-
-      if (userRole === "technician") {
-        if (isManual) {
-          payload.tech_remarks = remarks.trim() || "Maintenance task completed by technician.";
-        } else {
-          payload.technician_remarks = remarks.trim() || "Maintenance task completed by technician.";
-        }
-        payload.attachment_url = cloudinaryUrl || scheduledTask.attachment_url;
-        payload.done_by = isValidUuid(currentUserId) ? currentUserId : null;
-      } else if (userRole === "engineer") {
-        if (isManual) {
-          payload.eng_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
-        } else {
-          payload.engineer_remarks = remarks.trim() || "Reviewed and resolved by engineer.";
-        }
-        payload.checked_by = isValidUuid(currentUserId) ? currentUserId : null;
-        if (cloudinaryUrl) {
-          payload.attachment_url = cloudinaryUrl;
-        }
-      }
+      payload.attachment_url = localUrl || scheduledTask.attachment_url;
 
       try {
         const res = isManual
@@ -532,7 +530,14 @@ export default function MachineProfile() {
         }
       } catch (err) {
         console.warn("API update failed, queueing mutation offline:", err);
-        await syncService.queueMutation(scheduledTask.task_id, payload, isManual);
+        // Include base64 for offline sync upload later
+        const offlinePayload = {
+          ...payload,
+          attachment_url: null,
+          attachment_base64: evidenceBase64,
+          attachment_filename: evidenceImage ? evidenceImage.split('/').pop() : 'evidence.jpg'
+        };
+        await syncService.queueMutation(scheduledTask.task_id, offlinePayload, isManual);
         Alert.alert("Offline Sync Queued", "You are currently offline. Your checklist updates have been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
         setScheduledTask(null);
@@ -564,21 +569,22 @@ export default function MachineProfile() {
 
     setUpdateLoading(true);
     const isManual = scheduledTask.is_manual;
+    
+    const payload: any = {
+      priority: "emergency",
+      status: "in-progress",
+      done_by: isValidUuid(currentUserId) ? currentUserId : null
+    };
+
+    if (isManual) {
+      payload.tech_remarks = remarks.trim() || "Technician unable to complete task. Escalated to Emergency.";
+    } else {
+      payload.technician_remarks = remarks.trim() || "Technician unable to complete task. Escalated to Emergency.";
+    }
+
     try {
-      const cloudinaryUrl = await uploadImageToCloudinary(evidenceImage);
-
-      const payload: any = {
-        priority: "emergency",
-        status: "in-progress",
-        attachment_url: cloudinaryUrl,
-        done_by: isValidUuid(currentUserId) ? currentUserId : null
-      };
-
-      if (isManual) {
-        payload.tech_remarks = remarks.trim() || "Technician unable to complete task. Escalated to Emergency.";
-      } else {
-        payload.technician_remarks = remarks.trim() || "Technician unable to complete task. Escalated to Emergency.";
-      }
+      const localUrl = await uploadImageToLocalBackend(evidenceImage, evidenceBase64);
+      payload.attachment_url = localUrl;
 
       try {
         const res = isManual
@@ -595,7 +601,14 @@ export default function MachineProfile() {
         }
       } catch (err) {
         console.warn("API escalation failed, queueing mutation offline:", err);
-        await syncService.queueMutation(scheduledTask.task_id, payload, isManual);
+        // Include base64 for offline sync upload later
+        const offlinePayload = {
+          ...payload,
+          attachment_url: null,
+          attachment_base64: evidenceBase64,
+          attachment_filename: evidenceImage ? evidenceImage.split('/').pop() : 'evidence.jpg'
+        };
+        await syncService.queueMutation(scheduledTask.task_id, offlinePayload, isManual);
         Alert.alert("Offline Sync Queued", "You are currently offline. Your emergency escalation request has been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: "escalated" });
         setScheduledTask(null);

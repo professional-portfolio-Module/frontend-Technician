@@ -92,6 +92,27 @@ export const syncService = {
 
       for (const mutation of queue) {
         try {
+          // If there is an offline base64 image, upload it first before syncing the task
+          if (mutation.payload && mutation.payload.attachment_base64) {
+            try {
+              const uploadRes = await apiClient.post('/Main/router-backend/api/upload', {
+                image: mutation.payload.attachment_base64,
+                filename: mutation.payload.attachment_filename || 'evidence.jpg'
+              });
+              if (uploadRes.data && uploadRes.data.success && uploadRes.data.data?.url) {
+                mutation.payload.attachment_url = uploadRes.data.data.url;
+              }
+            } catch (uploadErr) {
+              console.warn(`[Sync] Image upload failed for task ${mutation.taskId}, skipping task sync for now:`, uploadErr);
+              remainingQueue.push(mutation);
+              continue;
+            } finally {
+              // Always clean up base64 payload to prevent sending huge payloads to task APIs
+              delete mutation.payload.attachment_base64;
+              delete mutation.payload.attachment_filename;
+            }
+          }
+
           const response = mutation.isManual
             ? await apiClient.put(`/Main/router-backend/api/manual-tasks/${mutation.taskId}`, mutation.payload)
             : await apiClient.patch(`/Main/router-backend/api/scheduled-tasks/${mutation.taskId}`, mutation.payload);

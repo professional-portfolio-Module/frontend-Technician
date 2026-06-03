@@ -1,32 +1,103 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Send, AlertCircle, FileText, CheckCircle, ChevronRight, MessageSquare } from "lucide-react-native";
+import { Send, FileText } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import { useFocusEffect } from "expo-router";
+import apiClient from "../../src/services/api";
+import { reportService, ReportItem } from "../../src/services/reportService";
 
 export default function ReportsScreen() {
   const [reportText, setReportText] = useState("");
   const [isCritical, setIsCritical] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  
+  const [userId, setUserId] = useState<string | null>(null);
+  const [hotelId, setHotelId] = useState<string | null>(null);
+  const [history, setHistory] = useState<ReportItem[]>([]);
 
-  const handleSubmit = () => {
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const fetchSessionAndHistory = async () => {
+        try {
+          setLoadingHistory(true);
+          const sessionRes = await apiClient.get("/auth/session");
+          if (!isActive) return;
+
+          if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+            const username = sessionRes.data.data.user_name;
+            const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+            if (!isActive) return;
+
+            if (profileRes.data.success && profileRes.data.data) {
+              const userData = profileRes.data.data;
+              const uid = userData.id;
+              const hid = userData.hotelId || userData.hotels?.[0]?.id;
+
+              setUserId(uid);
+              setHotelId(hid);
+
+              if (hid && uid) {
+                const reports = await reportService.getRecentReports(hid, uid);
+                if (!isActive) return;
+                setHistory(reports);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load weekly reports history:", err);
+        } finally {
+          if (isActive) {
+            setLoadingHistory(false);
+          }
+        }
+      };
+
+      fetchSessionAndHistory();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
+
+  const handleSubmit = async () => {
     if (!reportText.trim()) {
       Alert.alert("Error", "Please provide report details.");
       return;
     }
 
+    if (!hotelId || !userId) {
+      Alert.alert("Error", "User session not loaded yet. Please try again.");
+      return;
+    }
+
     setIsSubmitting(true);
-    // Simulate routing logic
-    const recipient = isCritical ? "Engineer" : "Manager";
-    
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const recipient = isCritical ? "Engineer" : "Manager";
+      const newReport = await reportService.submitReport({
+        hotel_id: hotelId,
+        technician_id: userId,
+        report_text: reportText.trim(),
+        is_critical: isCritical,
+      });
+
+      setHistory((prev) => [newReport, ...prev]);
+      setReportText("");
+      setIsCritical(false);
+
       Alert.alert(
         "Report Sent",
-        `Your weekly report has been routed to the ${recipient}.`,
-        [{ text: "OK", onPress: () => setReportText("") }]
+        `Your weekly report has been routed to the ${recipient}.`
       );
-    }, 2000);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to submit report");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -94,15 +165,45 @@ export default function ReportsScreen() {
         <View style={styles.historySection}>
           <Text style={styles.sectionTitle}>Recent Submissions</Text>
           <View style={styles.historyCard}>
-            <View style={styles.historyItem}>
-              <View style={styles.historyStatus}>
-                <FileText color="#94a3b8" size={16} />
+            {loadingHistory ? (
+              <ActivityIndicator color="#1B428A" style={{ margin: 20 }} />
+            ) : history.length === 0 ? (
+              <View style={styles.historyItem}>
+                <View style={styles.historyStatus}>
+                  <FileText color="#94a3b8" size={16} />
+                </View>
+                <View style={styles.historyDetails}>
+                  <Text style={styles.historyDate}>No submissions yet</Text>
+                  <Text style={styles.historySummary}>Your submitted reports will appear here.</Text>
+                </View>
               </View>
-              <View style={styles.historyDetails}>
-                <Text style={styles.historyDate}>No submissions yet</Text>
-                <Text style={styles.historySummary}>Your submitted reports will appear here.</Text>
-              </View>
-            </View>
+            ) : (
+              history.map((item, index) => {
+                const dateObj = new Date(item.created_at);
+                const displayDate = dateObj.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit"
+                });
+
+                return (
+                  <View key={item.id} style={[styles.historyItem, index < history.length - 1 && styles.borderBottom]}>
+                    <View style={[styles.historyStatus, item.is_critical && styles.criticalStatus]}>
+                      <FileText color={item.is_critical ? "#ef4444" : "#1B428A"} size={16} />
+                    </View>
+                    <View style={styles.historyDetails}>
+                      <View style={styles.historyHeaderRow}>
+                        <Text style={styles.historyDate}>{displayDate}</Text>
+                        {item.is_critical && <Text style={styles.criticalBadge}>Critical</Text>}
+                      </View>
+                      <Text style={styles.historySummary} numberOfLines={3}>{item.report_text}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
         </View>
         
@@ -295,5 +396,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#64748b",
     marginTop: 2,
+  },
+  borderBottom: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  criticalStatus: {
+    backgroundColor: "#fef2f2",
+  },
+  historyHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  criticalBadge: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#ef4444",
+    backgroundColor: "#fef2f2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: "hidden",
   },
 });

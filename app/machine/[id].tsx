@@ -15,15 +15,15 @@ import { syncService } from "../../src/services/syncService";
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371e3; // metres
-  const φ1 = lat1 * Math.PI/180; // φ, λ in radians
-  const φ2 = lat2 * Math.PI/180;
-  const Δφ = (lat2-lat1) * Math.PI/180;
-  const Δλ = (lon2-lon1) * Math.PI/180;
+  const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c; // in metres
 };
@@ -67,6 +67,8 @@ export default function MachineProfile() {
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isNear, setIsNear] = useState(false);
+  const [isProximityBypassed, setIsProximityBypassed] = useState(false);
+  const [proximityBypassedGlobally, setProximityBypassedGlobally] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
   const [evidenceBase64, setEvidenceBase64] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export default function MachineProfile() {
               hotelId = profileRes.data.data.hotelId || profileRes.data.data.hotels?.[0]?.id || "";
               setCurrentUserId(userId);
               setUserRole(role);
-              
+
               if (hotelId) {
                 await checkProximity(hotelId);
               } else {
@@ -134,7 +136,7 @@ export default function MachineProfile() {
             const base64Data = cardNo.substring("offline_asset:".length);
             const decodedJson = decodeBase64(base64Data);
             const parsed = JSON.parse(decodedJson);
-            
+
             cardNo = parsed.card_no;
             setMachine({
               id: parsed.card_no,
@@ -162,14 +164,14 @@ export default function MachineProfile() {
               if (role === 'technician') {
                 const hasAssignments = localTask.assigned_technicians && localTask.assigned_technicians.length > 0;
                 let isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
-                
+
                 // If the task is already in-progress, only the technician who claimed it (done_by) can access it
                 if (localTask.status === 'in-progress' && localTask.done_by && localTask.done_by !== userId) {
                   isAssigned = false;
                 }
-                
+
                 setIsAssignedTech(isAssigned);
-                
+
                 // Auto transition and queue scanner done_by ID offline only if fromScan is true
                 if (isAssigned && localTask.status === 'pending' && fromScan === 'true') {
                   localTask.status = 'in-progress';
@@ -294,12 +296,12 @@ export default function MachineProfile() {
                 if (role === 'technician') {
                   const hasAssignments = taskData.assigned_technicians && taskData.assigned_technicians.length > 0;
                   let isAssigned = !hasAssignments || taskData.assigned_technicians.some((tech: any) => tech.user_id === userId);
-                  
+
                   // If the task is already in-progress, only the technician who claimed it (done_by) can access it
                   if (taskData.status === 'in-progress' && taskData.done_by && taskData.done_by !== userId) {
                     isAssigned = false;
                   }
-                  
+
                   setIsAssignedTech(isAssigned);
 
                   // Auto transition and record scanner done_by ID only if fromScan is true
@@ -328,7 +330,7 @@ export default function MachineProfile() {
                     console.error("Auto transition to under_review failed:", e);
                   }
                 }
-                
+
                 setScheduledTask(taskData);
                 setRemarks(taskData.technician_remarks || "");
                 setEvidenceImage(taskData.attachment_url || null);
@@ -388,6 +390,20 @@ export default function MachineProfile() {
   const checkProximity = async (hotelId: string) => {
     try {
       setIsVerifying(true);
+      setIsProximityBypassed(false);
+      setProximityBypassedGlobally(false);
+
+      let globalBypass = false;
+      try {
+        const proxRes = await apiClient.get("/Main/router-backend/api/scheduled-tasks/proximity-status");
+        if (proxRes.data.success) {
+          globalBypass = proxRes.data.data.bypassed;
+          setProximityBypassedGlobally(globalBypass);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch global proximity status, defaulting to false:", err);
+      }
+
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permission Denied", "Location access is required to verify proximity.");
@@ -441,20 +457,30 @@ export default function MachineProfile() {
 
         if (dist <= 500) {
           setIsNear(true);
+          setIsProximityBypassed(false);
         } else {
-          setIsNear(false);
-          Alert.alert(
-            "Incorrect Location",
-            `You are too far from the hotel to perform this action. Distance: ${Math.round(dist)}m. You must be within 500m.`
-          );
+          if (__DEV__ || globalBypass) {
+            console.log(`Bypassing proximity restriction (actual distance: ${Math.round(dist)}m, global bypass: ${globalBypass})`);
+            setIsNear(true);
+            setIsProximityBypassed(true);
+          } else {
+            setIsNear(false);
+            setIsProximityBypassed(false);
+            Alert.alert(
+              "Incorrect Location",
+              `You are too far from the hotel to perform this action. Distance: ${Math.round(dist)}m. You must be within 500m.`
+            );
+          }
         }
       } else {
         console.warn("No hotel coordinates found. Bypassing check.");
         setIsNear(true);
+        setIsProximityBypassed(false);
       }
     } catch (error) {
       console.error("Proximity check failed", error);
       setIsNear(true);
+      setIsProximityBypassed(false);
     } finally {
       setIsVerifying(false);
     }
@@ -559,7 +585,7 @@ export default function MachineProfile() {
 
     setUpdateLoading(true);
     const isManual = scheduledTask.is_manual;
-    
+
     // Prepare base payload
     const payload: any = {
       status: targetStatus
@@ -643,7 +669,7 @@ export default function MachineProfile() {
 
     setUpdateLoading(true);
     const isManual = scheduledTask.is_manual;
-    
+
     const payload: any = {
       priority: "emergency",
       status: "in-progress",
@@ -752,15 +778,15 @@ export default function MachineProfile() {
         <View style={styles.mainCard}>
           <View style={styles.badgeRow}>
             <View style={[
-              styles.statusBadge, 
-              (machine.status === "check completed" || scheduledTask?.status === 'completed' || scheduledTask?.status === 'under_review') 
-                ? styles.successBadge 
+              styles.statusBadge,
+              (machine.status === "check completed" || scheduledTask?.status === 'completed' || scheduledTask?.status === 'under_review')
+                ? styles.successBadge
                 : styles.pendingBadge
             ]}>
               <Text style={[
-                styles.statusText, 
-                (machine.status === "check completed" || scheduledTask?.status === 'completed' || scheduledTask?.status === 'under_review') 
-                  ? styles.successText 
+                styles.statusText,
+                (machine.status === "check completed" || scheduledTask?.status === 'completed' || scheduledTask?.status === 'under_review')
+                  ? styles.successText
                   : styles.pendingText
               ]}>
                 {(machine.status === "check completed" || scheduledTask?.status === 'completed')
@@ -785,6 +811,16 @@ export default function MachineProfile() {
             <View style={styles.warningBox}>
               <AlertTriangle color="#ef4444" size={20} />
               <Text style={styles.warningText}>Proximity check failed. Please move closer to the machine.</Text>
+            </View>
+          )}
+          {isProximityBypassed && (
+            <View style={[styles.warningBox, { backgroundColor: "#fffbeb", borderColor: "#f59e0b", marginTop: 12 }]}>
+              <Info color="#d97706" size={20} />
+              <Text style={[styles.warningText, { color: "#92400e" }]}>
+                {proximityBypassedGlobally
+                  ? "Admin Override: Proximity check has been disabled by administrators."
+                  : "Development Mode: Proximity check bypassed. In production, this action would be blocked."}
+              </Text>
             </View>
           )}
           {!isAssignedTech && (
@@ -897,11 +933,11 @@ export default function MachineProfile() {
               {userRole === "engineer" ? "Engineer Remarks & Actions" : "Maintenance Notes / Remarks"}
             </Text>
             <View style={[
-              styles.inputWrapper, 
-              (isPendingTask || 
-               scheduledTask.status === 'completed' || 
-               scheduledTask.status === 'under_review' || 
-               (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && { opacity: 0.5 }
+              styles.inputWrapper,
+              (isPendingTask ||
+                scheduledTask.status === 'completed' ||
+                scheduledTask.status === 'under_review' ||
+                (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && { opacity: 0.5 }
             ]}>
               <TextInput
                 style={styles.remarksInput}
@@ -909,14 +945,14 @@ export default function MachineProfile() {
                   isExpiredOrWasExpired
                     ? "REQUIRED: Explain why this task was not completed before the due date..."
                     : isPendingTask
-                    ? "Locked: Change status to in-progress to start..."
-                    : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
-                    ? "No remarks provided for this task."
-                    : (userRole === 'technician' && scheduledTask.priority === 'emergency')
-                    ? "Task escalated to emergency. Remarks are read-only."
-                    : userRole === "engineer"
-                    ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
-                    : "Write observations, actions taken, or replacement parts used..."
+                      ? "Locked: Change status to in-progress to start..."
+                      : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
+                        ? "No remarks provided for this task."
+                        : (userRole === 'technician' && scheduledTask.priority === 'emergency')
+                          ? "Task escalated to emergency. Remarks are read-only."
+                          : userRole === "engineer"
+                            ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
+                            : "Write observations, actions taken, or replacement parts used..."
                 }
                 placeholderTextColor="#94a3b8"
                 multiline
@@ -925,10 +961,10 @@ export default function MachineProfile() {
                 onChangeText={setRemarks}
                 editable={
                   isExpiredOrWasExpired ||
-                  (!isPendingTask && 
-                  scheduledTask.status !== 'completed' && 
-                  scheduledTask.status !== 'under_review' && 
-                  !(userRole === 'technician' && scheduledTask.priority === 'emergency'))
+                  (!isPendingTask &&
+                    scheduledTask.status !== 'completed' &&
+                    scheduledTask.status !== 'under_review' &&
+                    !(userRole === 'technician' && scheduledTask.priority === 'emergency'))
                 }
               />
             </View>
@@ -940,44 +976,44 @@ export default function MachineProfile() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Work Evidence</Text>
             {!evidenceImage ? (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
-                  styles.uploadBox, 
-                  (!scheduledTask || 
-                   isPendingTask || 
-                   scheduledTask.status === 'completed' || 
-                   scheduledTask.status === 'under_review' || 
-                   (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadBox
-                ]} 
+                  styles.uploadBox,
+                  (!scheduledTask ||
+                    isPendingTask ||
+                    scheduledTask.status === 'completed' ||
+                    scheduledTask.status === 'under_review' ||
+                    (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadBox
+                ]}
                 onPress={handlePickEvidence}
                 disabled={
-                  !scheduledTask || 
-                  isPendingTask || 
-                  scheduledTask.status === 'completed' || 
-                  scheduledTask.status === 'under_review' || 
+                  !scheduledTask ||
+                  isPendingTask ||
+                  scheduledTask.status === 'completed' ||
+                  scheduledTask.status === 'under_review' ||
                   (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)
                 }
               >
-                <Camera 
+                <Camera
                   color={
-                    (scheduledTask && 
-                     !isPendingTask && 
-                     scheduledTask.status !== 'completed' && 
-                     scheduledTask.status !== 'under_review' && 
-                     !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) 
-                      ? "#1B428A" 
+                    (scheduledTask &&
+                      !isPendingTask &&
+                      scheduledTask.status !== 'completed' &&
+                      scheduledTask.status !== 'under_review' &&
+                      !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired))
+                      ? "#1B428A"
                       : "#cbd5e1"
-                  } 
-                  size={32} 
+                  }
+                  size={32}
                 />
-                <Text 
+                <Text
                   style={[
-                    styles.uploadText, 
-                    (!scheduledTask || 
-                     isPendingTask || 
-                     scheduledTask.status === 'completed' || 
-                     scheduledTask.status === 'under_review' || 
-                     (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadText
+                    styles.uploadText,
+                    (!scheduledTask ||
+                      isPendingTask ||
+                      scheduledTask.status === 'completed' ||
+                      scheduledTask.status === 'under_review' ||
+                      (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadText
                   ]}
                 >
                   Add Photo Evidence
@@ -987,17 +1023,17 @@ export default function MachineProfile() {
             ) : (
               <View style={styles.evidenceContainer}>
                 <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
-                {scheduledTask.status !== 'completed' && 
-                 scheduledTask.status !== 'under_review' && 
-                 !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired) && (
-                  <TouchableOpacity 
-                    style={styles.removeEvidence} 
-                    onPress={() => setEvidenceImage(null)}
-                    disabled={isPendingTask}
-                  >
-                    <X color="white" size={16} />
-                  </TouchableOpacity>
-                )}
+                {scheduledTask.status !== 'completed' &&
+                  scheduledTask.status !== 'under_review' &&
+                  !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired) && (
+                    <TouchableOpacity
+                      style={styles.removeEvidence}
+                      onPress={() => setEvidenceImage(null)}
+                      disabled={isPendingTask}
+                    >
+                      <X color="white" size={16} />
+                    </TouchableOpacity>
+                  )}
               </View>
             )}
           </View>
@@ -1057,8 +1093,8 @@ export default function MachineProfile() {
           ) : isExpiredTask && userRole === "technician" ? (
             <View style={styles.actionButtonContainer}>
               <View style={{ flexDirection: 'row', gap: 12, width: '100%', marginBottom: 12 }}>
-                <TouchableOpacity 
-                  style={[styles.actionBtn, { flex: 1, backgroundColor: "#64748b" }, updateLoading && styles.disabledBtn]} 
+                <TouchableOpacity
+                  style={[styles.actionBtn, { flex: 1, backgroundColor: "#64748b" }, updateLoading && styles.disabledBtn]}
                   onPress={handleStartTask}
                   disabled={updateLoading}
                 >
@@ -1069,12 +1105,12 @@ export default function MachineProfile() {
                     </>
                   )}
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
-                    styles.actionBtn, 
-                    { flex: 1, backgroundColor: "#ef4444" }, 
+                    styles.actionBtn,
+                    { flex: 1, backgroundColor: "#ef4444" },
                     (!evidenceImage || updateLoading) && styles.disabledBtn
-                  ]} 
+                  ]}
                   onPress={handleEscalateStatus}
                   disabled={!evidenceImage || updateLoading}
                 >
@@ -1086,12 +1122,12 @@ export default function MachineProfile() {
                   )}
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
-                  styles.actionBtn, 
-                  { backgroundColor: "#d97706", width: '100%' }, 
+                  styles.actionBtn,
+                  { backgroundColor: "#d97706", width: '100%' },
                   (!evidenceImage || !remarks.trim() || updateLoading) && styles.disabledBtn
-                ]} 
+                ]}
                 onPress={() => handleUpdateStatus("completed")}
                 disabled={!evidenceImage || !remarks.trim() || updateLoading}
               >
@@ -1107,8 +1143,8 @@ export default function MachineProfile() {
               </Text>
             </View>
           ) : isPendingTask ? (
-            <TouchableOpacity 
-              style={[styles.updateBtn, updateLoading && styles.disabledBtn]} 
+            <TouchableOpacity
+              style={[styles.updateBtn, updateLoading && styles.disabledBtn]}
               onPress={handleStartTask}
               disabled={updateLoading}
             >
@@ -1121,8 +1157,8 @@ export default function MachineProfile() {
             </TouchableOpacity>
           ) : userRole === "engineer" ? (
             <View style={styles.actionButtonContainer}>
-              <TouchableOpacity 
-                style={[styles.actionBtn, styles.successBtn, updateLoading && styles.disabledBtn]} 
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.successBtn, updateLoading && styles.disabledBtn]}
                 onPress={() => handleUpdateStatus("completed")}
                 disabled={updateLoading}
               >
@@ -1133,8 +1169,8 @@ export default function MachineProfile() {
                   </>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionBtn, styles.dangerBtn, updateLoading && styles.disabledBtn]} 
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.dangerBtn, updateLoading && styles.disabledBtn]}
                 onPress={() => handleUpdateStatus("rejected")}
                 disabled={updateLoading}
               >
@@ -1148,12 +1184,12 @@ export default function MachineProfile() {
             </View>
           ) : (
             <View style={styles.actionButtonContainer}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
-                  styles.actionBtn, 
-                  styles.successBtn, 
+                  styles.actionBtn,
+                  styles.successBtn,
                   (!evidenceImage || (scheduledTask.was_expired && !remarks.trim()) || updateLoading) && styles.disabledBtn
-                ]} 
+                ]}
                 onPress={() => handleUpdateStatus("completed")}
                 disabled={!evidenceImage || (scheduledTask.was_expired && !remarks.trim()) || updateLoading}
               >
@@ -1166,13 +1202,13 @@ export default function MachineProfile() {
                   </>
                 )}
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[
-                  styles.actionBtn, 
-                  styles.dangerBtn, 
+                  styles.actionBtn,
+                  styles.dangerBtn,
                   (!evidenceImage || updateLoading) && styles.disabledBtn
-                ]} 
+                ]}
                 onPress={handleEscalateStatus}
                 disabled={!evidenceImage || updateLoading}
               >
@@ -1183,7 +1219,7 @@ export default function MachineProfile() {
                   </>
                 )}
               </TouchableOpacity>
-              
+
               {scheduledTask.was_expired && (
                 <Text style={{ fontSize: 11, color: '#92400e', fontStyle: 'italic', textAlign: 'center', width: '100%', marginTop: 6 }}>
                   Remarks explaining the delay are required for late completion.
@@ -1198,7 +1234,7 @@ export default function MachineProfile() {
           </View>
         )}
         <Text style={styles.restrictionNote}>
-          {userRole === "engineer" 
+          {userRole === "engineer"
             ? "Engineer role: Can review and resolve/reject emergency escalations."
             : "Technician role: Can complete or escalate tasks."}
         </Text>

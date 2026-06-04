@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { LayoutDashboard, ClipboardList, User, QrCode, FileText } from "lucide-react-native";
 import { View } from "react-native";
+import NetworkStatusIndicator from "../../src/components/NetworkStatusIndicator";
 
 export default function TabLayout() {
   return (
@@ -30,6 +31,7 @@ export default function TabLayout() {
           fontSize: 18,
           color: "#1B428A",
         },
+        headerRight: () => <NetworkStatusIndicator />,
       }}
     >
       <Tabs.Screen

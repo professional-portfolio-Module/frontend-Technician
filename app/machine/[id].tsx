@@ -85,6 +85,7 @@ export default function MachineProfile() {
         let role = "";
         let userId = "";
         let hotelId = "";
+        let hasActionableTask = false;
         try {
           const sessionRes = await apiClient.get("/auth/session");
           if (sessionRes.data.success && sessionRes.data.data?.user_name) {
@@ -97,11 +98,6 @@ export default function MachineProfile() {
               setCurrentUserId(userId);
               setUserRole(role);
 
-              if (hotelId) {
-                await checkProximity(hotelId);
-              } else {
-                setIsNear(true);
-              }
             }
           }
         } catch (err) {
@@ -110,22 +106,6 @@ export default function MachineProfile() {
           role = userRole || "technician";
           setCurrentUserId(userId);
           setUserRole(role);
-
-          try {
-            const cachedStr = await AsyncStorage.getItem('cachedHotelCoordinates');
-            if (cachedStr) {
-              const cached = JSON.parse(cachedStr);
-              if (cached.hotelId) {
-                await checkProximity(cached.hotelId);
-              } else {
-                setIsNear(true);
-              }
-            } else {
-              setIsNear(true);
-            }
-          } catch (storageErr) {
-            setIsNear(true);
-          }
         }
 
         let cardNo = id as string;
@@ -158,6 +138,9 @@ export default function MachineProfile() {
             const cachedTasks = await syncService.getCachedTasks();
             const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
             if (localTask) {
+              if (localTask.status !== 'completed' && localTask.status !== 'under_review') {
+                hasActionableTask = true;
+              }
               setScheduledTask(localTask);
               setRemarks(localTask.technician_remarks || "");
               setEvidenceImage(localTask.attachment_url || null);
@@ -263,6 +246,9 @@ export default function MachineProfile() {
                     }
                   }
 
+                  if (normalizedTask.status !== 'completed' && normalizedTask.status !== 'under_review') {
+                    hasActionableTask = true;
+                  }
                   setScheduledTask(normalizedTask);
                   setRemarks(normalizedTask.tech_remarks || "");
                   setEvidenceImage(normalizedTask.attachment_url || null);
@@ -331,6 +317,9 @@ export default function MachineProfile() {
                   }
                 }
 
+                if (taskData.status !== 'completed' && taskData.status !== 'under_review') {
+                  hasActionableTask = true;
+                }
                 setScheduledTask(taskData);
                 setRemarks(taskData.technician_remarks || "");
                 setEvidenceImage(taskData.attachment_url || null);
@@ -345,6 +334,9 @@ export default function MachineProfile() {
             const localTask = cachedTasks.find(t => t.asset_card_no === cardNo && t.status !== 'completed');
             setScheduledTask(localTask || null);
             if (localTask) {
+              if (localTask.status !== 'completed' && localTask.status !== 'under_review') {
+                hasActionableTask = true;
+              }
               setRemarks(localTask.technician_remarks || "");
               setEvidenceImage(localTask.attachment_url || null);
             }
@@ -369,6 +361,9 @@ export default function MachineProfile() {
                 refrigerant: "N/A"
               }
             });
+            if (localTask.status !== 'completed' && localTask.status !== 'under_review') {
+              hasActionableTask = true;
+            }
             setScheduledTask(localTask);
             setRemarks(localTask.technician_remarks || "");
             setEvidenceImage(localTask.attachment_url || null);
@@ -376,6 +371,29 @@ export default function MachineProfile() {
             setError("Failed to fetch asset details from backend API and no local cache was found.");
             setScheduledTask(null);
           }
+        }
+
+        if (hasActionableTask) {
+          if (!hotelId) {
+            try {
+              const cachedStr = await AsyncStorage.getItem('cachedHotelCoordinates');
+              if (cachedStr) {
+                const cached = JSON.parse(cachedStr);
+                if (cached.hotelId) hotelId = cached.hotelId;
+              }
+            } catch (storageErr) {
+              console.warn("Error reading cached coordinates during final check:", storageErr);
+            }
+          }
+          if (hotelId) {
+            await checkProximity(hotelId);
+          } else {
+            setIsNear(true);
+            setIsVerifying(false);
+          }
+        } else {
+          setIsNear(true);
+          setIsVerifying(false);
         }
       } catch (err) {
         console.error("Fatal initialization error:", err);

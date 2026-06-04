@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [activeJob, setActiveJob] = useState<any>(null);
   const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedInitially, setHasLoadedInitially] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -25,7 +26,7 @@ export default function Dashboard() {
 
       const fetchDashboardData = async (isBackground = false) => {
         try {
-          if (!isBackground) {
+          if (!isBackground && !hasLoadedInitially) {
             setLoading(true);
           }
           const sessionRes = await apiClient.get("/auth/session");
@@ -121,6 +122,7 @@ export default function Dashboard() {
         } finally {
           if (isActive) {
             setLoading(false);
+            setHasLoadedInitially(true);
           }
         }
       };

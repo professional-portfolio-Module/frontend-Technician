@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function JobsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [hasLoadedInitially, setHasLoadedInitially] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeSegment, setActiveSegment] = useState<"scheduled" | "manual">("scheduled");
   const [scheduledTasks, setScheduledTasks] = useState<any[]>([]);
@@ -21,7 +22,7 @@ export default function JobsScreen() {
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
   const fetchTasks = async (showLoadingIndicator = true) => {
-    if (showLoadingIndicator) setLoading(true);
+    if (showLoadingIndicator && !hasLoadedInitially) setLoading(true);
 
     // Sync offline queue if we have internet
     try {
@@ -127,6 +128,7 @@ export default function JobsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setHasLoadedInitially(true);
     }
   };
 

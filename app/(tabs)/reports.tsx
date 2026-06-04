@@ -12,6 +12,7 @@ export default function ReportsScreen() {
   const [isCritical, setIsCritical] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [hasLoadedInitially, setHasLoadedInitially] = useState(false);
   
   const [userId, setUserId] = useState<string | null>(null);
   const [hotelId, setHotelId] = useState<string | null>(null);
@@ -23,7 +24,9 @@ export default function ReportsScreen() {
 
       const fetchSessionAndHistory = async () => {
         try {
-          setLoadingHistory(true);
+          if (!hasLoadedInitially) {
+            setLoadingHistory(true);
+          }
           const sessionRes = await apiClient.get("/auth/session");
           if (!isActive) return;
 
@@ -52,6 +55,7 @@ export default function ReportsScreen() {
         } finally {
           if (isActive) {
             setLoadingHistory(false);
+            setHasLoadedInitially(true);
           }
         }
       };

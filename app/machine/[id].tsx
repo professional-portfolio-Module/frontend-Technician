@@ -5,12 +5,28 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, MapPin, Cpu, Calendar, CheckCircle2, AlertTriangle, ShieldCheck, Camera, X, Info, XCircle, QrCode, Clock } from "lucide-react-native";
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from "expo-location";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
 import apiClient from "../../src/services/api";
 import { syncService } from "../../src/services/syncService";
 
 // Fallback Mock Machine Data has been removed entirely per specification.
+
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371e3; // metres
+  const φ1 = lat1 * Math.PI/180; // φ, λ in radians
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c; // in metres
+};
 
 const decodeBase64 = (str: string): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -78,6 +94,12 @@ export default function MachineProfile() {
               hotelId = profileRes.data.data.hotelId || profileRes.data.data.hotels?.[0]?.id || "";
               setCurrentUserId(userId);
               setUserRole(role);
+              
+              if (hotelId) {
+                await checkProximity(hotelId);
+              } else {
+                setIsNear(true);
+              }
             }
           }
         } catch (err) {
@@ -86,6 +108,22 @@ export default function MachineProfile() {
           role = userRole || "technician";
           setCurrentUserId(userId);
           setUserRole(role);
+
+          try {
+            const cachedStr = await AsyncStorage.getItem('cachedHotelCoordinates');
+            if (cachedStr) {
+              const cached = JSON.parse(cachedStr);
+              if (cached.hotelId) {
+                await checkProximity(cached.hotelId);
+              } else {
+                setIsNear(true);
+              }
+            } else {
+              setIsNear(true);
+            }
+          } catch (storageErr) {
+            setIsNear(true);
+          }
         }
 
         let cardNo = id as string;
@@ -344,23 +382,79 @@ export default function MachineProfile() {
       }
     };
 
-    checkProximity();
     initialize();
   }, [id]);
 
-  const checkProximity = async () => {
+  const checkProximity = async (hotelId: string) => {
     try {
       setIsVerifying(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Permission Denied", "Location access is required to verify proximity to the machine.");
+        Alert.alert("Permission Denied", "Location access is required to verify proximity.");
+        setIsNear(false);
         return;
       }
 
-      await Location.getCurrentPositionAsync({});
-      setIsNear(true); // Forced true for simulator purposes
+      const position = await Location.getCurrentPositionAsync({});
+      const userLat = position.coords.latitude;
+      const userLon = position.coords.longitude;
+
+      let hotelLat: number | null = null;
+      let hotelLon: number | null = null;
+
+      try {
+        const cachedStr = await AsyncStorage.getItem('cachedHotelCoordinates');
+        if (cachedStr) {
+          const cached = JSON.parse(cachedStr);
+          if (cached.hotelId === hotelId && cached.latitude && cached.longitude) {
+            hotelLat = Number(cached.latitude);
+            hotelLon = Number(cached.longitude);
+          }
+        }
+      } catch (e) {
+        console.warn("Error reading cached coordinates", e);
+      }
+
+      if (!hotelLat || !hotelLon) {
+        try {
+          const hotelRes = await apiClient.get(`/Main/router-backend/api/hotels/${hotelId}`);
+          if (hotelRes.data.success && hotelRes.data.data) {
+            const hData = hotelRes.data.data;
+            if (hData.latitude && hData.longitude) {
+              hotelLat = Number(hData.latitude);
+              hotelLon = Number(hData.longitude);
+              await AsyncStorage.setItem('cachedHotelCoordinates', JSON.stringify({
+                hotelId,
+                latitude: hData.latitude,
+                longitude: hData.longitude
+              }));
+            }
+          }
+        } catch (apiErr) {
+          console.warn("Failed to fetch hotel details dynamically", apiErr);
+        }
+      }
+
+      if (hotelLat !== null && hotelLon !== null) {
+        const dist = calculateDistance(userLat, userLon, hotelLat, hotelLon);
+        console.log(`Distance to hotel center: ${dist} meters`);
+
+        if (dist <= 500) {
+          setIsNear(true);
+        } else {
+          setIsNear(false);
+          Alert.alert(
+            "Incorrect Location",
+            `You are too far from the hotel to perform this action. Distance: ${Math.round(dist)}m. You must be within 500m.`
+          );
+        }
+      } else {
+        console.warn("No hotel coordinates found. Bypassing check.");
+        setIsNear(true);
+      }
     } catch (error) {
-      console.error(error);
+      console.error("Proximity check failed", error);
+      setIsNear(true);
     } finally {
       setIsVerifying(false);
     }
@@ -371,31 +465,11 @@ export default function MachineProfile() {
       Alert.alert("No Task Available", "You can only capture work evidence if there is an active scheduled maintenance task.");
       return;
     }
-    Alert.alert(
-      "Photo Evidence",
-      "Take a photo or choose from gallery to verify the check.",
-      [
-        { text: "Take Photo", onPress: () => launchCamera() },
-        { text: "Choose from Gallery", onPress: () => launchLibrary() },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+    await launchCamera();
   };
 
   const launchCamera = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.4,
-      base64: true,
-    });
-    if (!result.canceled) {
-      setEvidenceImage(result.assets[0].uri);
-      setEvidenceBase64(result.assets[0].base64 || null);
-    }
-  };
-
-  const launchLibrary = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       quality: 0.4,
       base64: true,

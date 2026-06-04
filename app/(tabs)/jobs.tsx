@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Search, Filter, Clock, MapPin, ChevronRight, AlertTriangle, CheckCircle2, Info, Calendar, CloudLightning } from "lucide-react-native";
 import apiClient from "../../src/services/api";
 import { syncService } from "../../src/services/syncService";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function JobsScreen() {
   const router = useRouter();
@@ -53,6 +54,26 @@ export default function JobsScreen() {
           setUserId(uid);
 
           if (hotelId) {
+            // Fetch and cache hotel coordinates for offline proximity check
+            try {
+              apiClient.get(`/Main/router-backend/api/hotels/${hotelId}`).then(async (hotelRes) => {
+                if (hotelRes.data.success && hotelRes.data.data) {
+                  const hData = hotelRes.data.data;
+                  if (hData.latitude && hData.longitude) {
+                    await AsyncStorage.setItem('cachedHotelCoordinates', JSON.stringify({
+                      hotelId,
+                      latitude: hData.latitude,
+                      longitude: hData.longitude
+                    }));
+                  }
+                }
+              }).catch((err) => {
+                console.warn("Async fetch of hotel coordinates failed:", err);
+              });
+            } catch (hErr) {
+              console.warn("Failed to pre-cache hotel coordinates:", hErr);
+            }
+
             // Fetch Scheduled Tasks
             const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
             let fetchedScheduled: any[] = [];

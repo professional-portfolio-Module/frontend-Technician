@@ -7,8 +7,11 @@ export default function NetworkStatusIndicator() {
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
-      // Treat null or undefined as disconnected
-      setIsOnline(state.isConnected ?? false);
+      // Prioritize isInternetReachable to accurately detect real offline state on simulators/devices
+      const online = state.isInternetReachable !== null
+        ? state.isInternetReachable
+        : (state.isConnected ?? false);
+      setIsOnline(online);
     });
     return () => unsubscribe();
   }, []);

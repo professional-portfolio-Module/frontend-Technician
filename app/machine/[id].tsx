@@ -546,7 +546,7 @@ export default function MachineProfile() {
     }
 
     // Require remarks for expired task late completions
-    const isExpired = scheduledTask.status === 'expired';
+    const isExpired = scheduledTask.status === 'expired' || scheduledTask.was_expired === true;
     if (isExpired && !remarks.trim()) {
       Alert.alert("Remarks Required", "Please explain why this task was not completed before the due date. Remarks are mandatory for late completions.");
       return;
@@ -734,6 +734,7 @@ export default function MachineProfile() {
   const isPendingTask = userRole === "technician" && scheduledTask && scheduledTask.status === "pending";
   const isCompletedOrReview = scheduledTask && (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review');
   const isExpiredTask = scheduledTask && scheduledTask.status === 'expired';
+  const isExpiredOrWasExpired = isExpiredTask || (scheduledTask && scheduledTask.was_expired === true);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -828,11 +829,11 @@ export default function MachineProfile() {
               </Text>
             </View>
           )}
-          {isExpiredTask && (
+          {(isExpiredTask || (scheduledTask && scheduledTask.was_expired === true && scheduledTask.status !== 'completed' && scheduledTask.status !== 'under_review')) && (
             <View style={[styles.warningBox, { marginTop: 12, backgroundColor: "#fef3c7", borderColor: "#f59e0b" }]}>
               <Clock color="#d97706" size={20} />
               <Text style={[styles.warningText, { color: "#92400e" }]}>
-                This task has expired because it was not completed before the due date. You can still complete it as a late completion, but remarks explaining the delay are mandatory. Escalation is no longer available.
+                This task has expired because it was not completed before the due date. You can still complete it as a late completion (remarks explaining the delay are mandatory) or escalate it to emergency if a critical breakdown is found.
               </Text>
             </View>
           )}
@@ -900,22 +901,22 @@ export default function MachineProfile() {
               (isPendingTask || 
                scheduledTask.status === 'completed' || 
                scheduledTask.status === 'under_review' || 
-               (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) && { opacity: 0.5 }
+               (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && { opacity: 0.5 }
             ]}>
               <TextInput
                 style={styles.remarksInput}
                 placeholder={
-                  isExpiredTask
+                  isExpiredOrWasExpired
                     ? "REQUIRED: Explain why this task was not completed before the due date..."
                     : isPendingTask
                     ? "Locked: Change status to in-progress to start..."
                     : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
-                      ? "No remarks provided for this task."
-                      : (userRole === 'technician' && scheduledTask.priority === 'emergency')
-                        ? "Task escalated to emergency. Remarks are read-only."
-                        : userRole === "engineer"
-                          ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
-                          : "Write observations, actions taken, or replacement parts used..."
+                    ? "No remarks provided for this task."
+                    : (userRole === 'technician' && scheduledTask.priority === 'emergency')
+                    ? "Task escalated to emergency. Remarks are read-only."
+                    : userRole === "engineer"
+                    ? "Write actions taken to resolve the emergency, parts replaced, or diagnostic results..."
+                    : "Write observations, actions taken, or replacement parts used..."
                 }
                 placeholderTextColor="#94a3b8"
                 multiline
@@ -923,7 +924,7 @@ export default function MachineProfile() {
                 value={remarks}
                 onChangeText={setRemarks}
                 editable={
-                  isExpiredTask ||
+                  isExpiredOrWasExpired ||
                   (!isPendingTask && 
                   scheduledTask.status !== 'completed' && 
                   scheduledTask.status !== 'under_review' && 
@@ -946,7 +947,7 @@ export default function MachineProfile() {
                    isPendingTask || 
                    scheduledTask.status === 'completed' || 
                    scheduledTask.status === 'under_review' || 
-                   (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) && styles.disabledUploadBox
+                   (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadBox
                 ]} 
                 onPress={handlePickEvidence}
                 disabled={
@@ -954,7 +955,7 @@ export default function MachineProfile() {
                   isPendingTask || 
                   scheduledTask.status === 'completed' || 
                   scheduledTask.status === 'under_review' || 
-                  (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)
+                  (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)
                 }
               >
                 <Camera 
@@ -963,7 +964,7 @@ export default function MachineProfile() {
                      !isPendingTask && 
                      scheduledTask.status !== 'completed' && 
                      scheduledTask.status !== 'under_review' && 
-                     !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) 
+                     !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) 
                       ? "#1B428A" 
                       : "#cbd5e1"
                   } 
@@ -976,7 +977,7 @@ export default function MachineProfile() {
                      isPendingTask || 
                      scheduledTask.status === 'completed' || 
                      scheduledTask.status === 'under_review' || 
-                     (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask)) && styles.disabledUploadText
+                     (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadText
                   ]}
                 >
                   Add Photo Evidence
@@ -988,7 +989,7 @@ export default function MachineProfile() {
                 <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
                 {scheduledTask.status !== 'completed' && 
                  scheduledTask.status !== 'under_review' && 
-                 !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredTask) && (
+                 !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired) && (
                   <TouchableOpacity 
                     style={styles.removeEvidence} 
                     onPress={() => setEvidenceImage(null)}
@@ -1055,10 +1056,40 @@ export default function MachineProfile() {
             </View>
           ) : isExpiredTask && userRole === "technician" ? (
             <View style={styles.actionButtonContainer}>
+              <View style={{ flexDirection: 'row', gap: 12, width: '100%', marginBottom: 12 }}>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { flex: 1, backgroundColor: "#64748b" }, updateLoading && styles.disabledBtn]} 
+                  onPress={handleStartTask}
+                  disabled={updateLoading}
+                >
+                  {updateLoading ? <ActivityIndicator color="white" /> : (
+                    <>
+                      <Clock color="white" size={18} />
+                      <Text style={styles.actionBtnText}>Start Task</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.actionBtn, 
+                    { flex: 1, backgroundColor: "#ef4444" }, 
+                    (!evidenceImage || updateLoading) && styles.disabledBtn
+                  ]} 
+                  onPress={handleEscalateStatus}
+                  disabled={!evidenceImage || updateLoading}
+                >
+                  {updateLoading ? <ActivityIndicator color="white" /> : (
+                    <>
+                      <AlertTriangle color="white" size={18} />
+                      <Text style={styles.actionBtnText}>Escalate</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity 
                 style={[
                   styles.actionBtn, 
-                  { backgroundColor: "#d97706" }, 
+                  { backgroundColor: "#d97706", width: '100%' }, 
                   (!evidenceImage || !remarks.trim() || updateLoading) && styles.disabledBtn
                 ]} 
                 onPress={() => handleUpdateStatus("completed")}
@@ -1066,13 +1097,13 @@ export default function MachineProfile() {
               >
                 {updateLoading ? <ActivityIndicator color="white" /> : (
                   <>
-                    <Clock color="white" size={18} />
-                    <Text style={styles.actionBtnText}>Complete as Late</Text>
+                    <CheckCircle2 color="white" size={18} />
+                    <Text style={styles.actionBtnText}>Complete Late Directly</Text>
                   </>
                 )}
               </TouchableOpacity>
-              <Text style={{ fontSize: 11, color: '#92400e', fontStyle: 'italic', textAlign: 'center', marginTop: 4 }}>
-                Remarks and photo evidence are mandatory for late completions.
+              <Text style={{ fontSize: 11, color: '#92400e', fontStyle: 'italic', textAlign: 'center', marginTop: 6 }}>
+                Remarks and photo evidence are mandatory to complete, and photo evidence is required to escalate.
               </Text>
             </View>
           ) : isPendingTask ? (
@@ -1121,18 +1152,21 @@ export default function MachineProfile() {
                 style={[
                   styles.actionBtn, 
                   styles.successBtn, 
-                  (!evidenceImage || updateLoading) && styles.disabledBtn
+                  (!evidenceImage || (scheduledTask.was_expired && !remarks.trim()) || updateLoading) && styles.disabledBtn
                 ]} 
                 onPress={() => handleUpdateStatus("completed")}
-                disabled={!evidenceImage || updateLoading}
+                disabled={!evidenceImage || (scheduledTask.was_expired && !remarks.trim()) || updateLoading}
               >
                 {updateLoading ? <ActivityIndicator color="white" /> : (
                   <>
                     <CheckCircle2 color="white" size={18} />
-                    <Text style={styles.actionBtnText}>Complete Task</Text>
+                    <Text style={styles.actionBtnText}>
+                      {scheduledTask.was_expired ? "Complete Late" : "Complete Task"}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
+              
               <TouchableOpacity 
                 style={[
                   styles.actionBtn, 
@@ -1149,6 +1183,12 @@ export default function MachineProfile() {
                   </>
                 )}
               </TouchableOpacity>
+              
+              {scheduledTask.was_expired && (
+                <Text style={{ fontSize: 11, color: '#92400e', fontStyle: 'italic', textAlign: 'center', width: '100%', marginTop: 6 }}>
+                  Remarks explaining the delay are required for late completion.
+                </Text>
+              )}
             </View>
           )
         ) : (

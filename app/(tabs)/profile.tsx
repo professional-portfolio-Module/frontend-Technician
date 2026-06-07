@@ -62,6 +62,7 @@ export default function ProfileScreen() {
     email: string;
     mobilenumber?: string;
     role: string;
+    hotels?: Array<{ id: string; name: string; city?: string }>;
   }
   const [admins, setAdmins] = useState<AdminInfo[]>([]);
 
@@ -554,6 +555,7 @@ export default function ProfileScreen() {
                         <Text style={styles.adminName}>{admin.name}</Text>
                         <Text style={styles.adminRole}>
                           {admin.role.charAt(0).toUpperCase() + admin.role.slice(1).toLowerCase()}
+                          {admin.hotels?.[0]?.name ? ` • ${admin.hotels[0].name}` : ''}
                         </Text>
                         <Text style={styles.adminContact}>📧 {admin.email}</Text>
                         {admin.mobilenumber ? (

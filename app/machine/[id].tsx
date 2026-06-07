@@ -87,6 +87,17 @@ export default function MachineProfile() {
         let hotelId = "";
         let hasActionableTask = false;
         try {
+          const cachedProfileStr = await AsyncStorage.getItem('@user_profile_cache');
+          if (cachedProfileStr) {
+            const profile = JSON.parse(cachedProfileStr);
+            userId = profile.id || "";
+            role = profile.role?.toLowerCase() || "";
+            hotelId = profile.hotelId || "";
+            setCurrentUserId(userId);
+            setUserRole(role);
+          }
+
+          // Fetch latest in background if cache is empty or for verification
           const sessionRes = await apiClient.get("/auth/session");
           if (sessionRes.data.success && sessionRes.data.data?.user_name) {
             const username = sessionRes.data.data.user_name;
@@ -98,12 +109,19 @@ export default function MachineProfile() {
               setCurrentUserId(userId);
               setUserRole(role);
 
+              await AsyncStorage.setItem('@user_profile_cache', JSON.stringify({
+                id: userId,
+                name: profileRes.data.data.name,
+                email: profileRes.data.data.email,
+                role: profileRes.data.data.role,
+                hotelId
+              }));
             }
           }
         } catch (err) {
           console.warn("Failed to retrieve online session details, using local defaults:", err);
-          userId = currentUserId || "offline-tech-id";
-          role = userRole || "technician";
+          userId = userId || currentUserId || "offline-tech-id";
+          role = role || userRole || "technician";
           setCurrentUserId(userId);
           setUserRole(role);
         }

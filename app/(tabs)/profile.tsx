@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import i18n from "../../i18n";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from "../../src/services/api";
+import { syncService } from "../../src/services/syncService";
 
 interface ProfileItemProps {
   icon: LucideIcon;
@@ -39,38 +40,82 @@ export default function ProfileScreen() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
+        // 1. Load profile and tasks from cache immediately
+        const cachedProfileStr = await AsyncStorage.getItem('@user_profile_cache');
+        let cachedUid = "";
+        let cachedHotelId = "";
+
+        if (cachedProfileStr) {
+          const profile = JSON.parse(cachedProfileStr);
+          setUserName(profile.name || "Technician");
+          setUserEmail(profile.email || "");
+          setUserRole(profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1).toLowerCase() : "Technician");
+          cachedUid = profile.id || "";
+          cachedHotelId = profile.hotelId || "";
+        }
+
+        const [cachedScheduled, cachedManual] = await Promise.all([
+          syncService.getCachedTasks(),
+          syncService.getCachedManualTasks()
+        ]);
+
+        if (cachedUid) {
+          let count = 0;
+          const completedSched = cachedScheduled.filter((t: any) => 
+            t.status === 'completed' && t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid)
+          );
+          const completedManual = cachedManual.filter((t: any) => 
+            t.status === 'completed' && t.assigned_to === cachedUid
+          );
+          count = completedSched.length + completedManual.length;
+          setCompletedJobsCount(count);
+        }
+
+        // 2. Fetch latest details in background
         const response = await apiClient.get("/auth/session");
         if (response.data.success && response.data.data?.user_name) {
           const username = response.data.data.user_name;
-          setUserName(username);
-
           const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
           if (profileRes.data.success && profileRes.data.data) {
             const userData = profileRes.data.data;
-            if (userData.name) {
-              setUserName(userData.name);
-            }
+            setUserName(userData.name || "Technician");
             setUserEmail(userData.email || "");
             setUserRole(userData.role ? userData.role.charAt(0).toUpperCase() + userData.role.slice(1).toLowerCase() : "Technician");
 
             const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
+            const uid = userData.id;
+
+            // Cache new profile
+            await AsyncStorage.setItem('@user_profile_cache', JSON.stringify({
+              id: userData.id,
+              name: userData.name,
+              email: userData.email,
+              role: userData.role,
+              hotelId
+            }));
+
             if (hotelId) {
-              const uid = userData.id;
+              // Fetch tasks in parallel
+              const [tasksRes, manualRes] = await Promise.all([
+                apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`),
+                apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`)
+              ]);
+
               let completedCount = 0;
 
-              // Fetch completed Scheduled Tasks
-              const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
               if (tasksRes.data?.success && tasksRes.data.data) {
-                const completedTasks = tasksRes.data.data.filter((t: any) => 
+                const tasks = tasksRes.data.data;
+                await syncService.cacheTasks(tasks);
+                const completedTasks = tasks.filter((t: any) => 
                   t.status === 'completed' && t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
                 );
                 completedCount += completedTasks.length;
               }
 
-              // Fetch completed Manual Tasks
-              const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
               if (manualRes.data?.success && manualRes.data.data) {
-                const completedManual = manualRes.data.data.filter((t: any) => 
+                const manual = manualRes.data.data;
+                await syncService.cacheManualTasks(manual);
+                const completedManual = manual.filter((t: any) => 
                   t.status === 'completed' && t.assigned_to === uid
                 );
                 completedCount += completedManual.length;
@@ -79,12 +124,9 @@ export default function ProfileScreen() {
               setCompletedJobsCount(completedCount);
             }
           }
-        } else {
-          setUserName("Technician");
         }
       } catch (error) {
-        console.error("Failed to fetch session:", error);
-        setUserName("Technician");
+        console.warn("Failed to fetch session in profile:", error);
       }
     };
     fetchSession();

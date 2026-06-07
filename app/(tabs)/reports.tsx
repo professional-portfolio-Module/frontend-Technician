@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { useFocusEffect } from "expo-router";
 import apiClient from "../../src/services/api";
 import { reportService, ReportItem } from "../../src/services/reportService";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ReportsScreen() {
   const [reportText, setReportText] = useState("");
@@ -24,9 +25,35 @@ export default function ReportsScreen() {
 
       const fetchSessionAndHistory = async () => {
         try {
-          if (!hasLoadedInitially) {
+          // 1. Check cached profile first
+          const cachedProfileStr = await AsyncStorage.getItem('@user_profile_cache');
+          let cachedUid = userId;
+          let cachedHid = hotelId;
+
+          if (cachedProfileStr) {
+            const profile = JSON.parse(cachedProfileStr);
+            cachedUid = profile.id || null;
+            cachedHid = profile.hotelId || null;
+            setUserId(cachedUid);
+            setHotelId(cachedHid);
+
+            if (cachedHid && cachedUid) {
+              const reports = await reportService.getRecentReports(cachedHid, cachedUid);
+              if (isActive) {
+                setHistory(reports);
+                setLoadingHistory(false);
+              }
+            }
+          }
+
+          if (!hasLoadedInitially && !cachedUid) {
             setLoadingHistory(true);
           }
+
+          // 2. Fetch/validate latest session in background
+          let finalUid = cachedUid;
+          let finalHid = cachedHid;
+
           const sessionRes = await apiClient.get("/auth/session");
           if (!isActive) return;
 
@@ -37,21 +64,31 @@ export default function ReportsScreen() {
 
             if (profileRes.data.success && profileRes.data.data) {
               const userData = profileRes.data.data;
-              const uid = userData.id;
-              const hid = userData.hotelId || userData.hotels?.[0]?.id;
+              finalUid = userData.id;
+              finalHid = userData.hotelId || userData.hotels?.[0]?.id;
 
-              setUserId(uid);
-              setHotelId(hid);
+              setUserId(finalUid);
+              setHotelId(finalHid);
 
-              if (hid && uid) {
-                const reports = await reportService.getRecentReports(hid, uid);
-                if (!isActive) return;
-                setHistory(reports);
-              }
+              // Update cache
+              await AsyncStorage.setItem('@user_profile_cache', JSON.stringify({
+                id: userData.id,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                hotelId: finalHid
+              }));
+            }
+          }
+
+          if (finalHid && finalUid) {
+            const reports = await reportService.getRecentReports(finalHid, finalUid);
+            if (isActive) {
+              setHistory(reports);
             }
           }
         } catch (err) {
-          console.error("Failed to load weekly reports history:", err);
+          console.warn("Failed to load weekly reports history:", err);
         } finally {
           if (isActive) {
             setLoadingHistory(false);

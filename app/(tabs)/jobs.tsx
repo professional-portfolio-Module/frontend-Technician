@@ -22,7 +22,58 @@ export default function JobsScreen() {
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
   const fetchTasks = async (showLoadingIndicator = true) => {
-    if (showLoadingIndicator && !hasLoadedInitially) setLoading(true);
+    // 1. Load from offline cache immediately to avoid waiting/spinners (Stale-While-Revalidate)
+    try {
+      const [cachedScheduled, cachedManual] = await Promise.all([
+        syncService.getCachedTasks(),
+        syncService.getCachedManualTasks()
+      ]);
+      
+      const cachedProfileStr = await AsyncStorage.getItem('@user_profile_cache');
+      let cachedRole = userRole;
+      let cachedUid = userId;
+      
+      if (cachedProfileStr) {
+        const profile = JSON.parse(cachedProfileStr);
+        cachedRole = profile.role?.toLowerCase() || "";
+        cachedUid = profile.id || "";
+        setUserRole(cachedRole);
+        setUserId(cachedUid);
+      }
+
+      if (cachedScheduled && cachedScheduled.length > 0) {
+        let filteredSched = cachedScheduled;
+        if (cachedRole === 'technician' && cachedUid) {
+          filteredSched = filteredSched.filter((t: any) =>
+            t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid)
+          );
+        } else if (cachedRole === 'engineer') {
+          filteredSched = filteredSched.filter((t: any) => t.priority === 'emergency');
+        }
+        setScheduledTasks(filteredSched);
+      }
+      
+      if (cachedManual && cachedManual.length > 0) {
+        let filteredManual = cachedManual;
+        if (cachedRole === 'technician' && cachedUid) {
+          filteredManual = filteredManual.filter((t: any) => t.assigned_to === cachedUid);
+        } else if (cachedRole === 'engineer') {
+          filteredManual = filteredManual.filter((t: any) => t.priority === 'emergency');
+        }
+        setManualTasks(filteredManual);
+      }
+
+      // If we have cached tasks and it's not a pull-to-refresh, hide loading indicator immediately
+      if (showLoadingIndicator && !hasLoadedInitially && (cachedScheduled.length > 0 || cachedManual.length > 0)) {
+        setLoading(false);
+      }
+    } catch (e) {
+      console.warn("Failed to load initial cache:", e);
+    }
+
+    if (showLoadingIndicator && !hasLoadedInitially && scheduledTasks.length === 0 && manualTasks.length === 0) {
+      setLoading(true);
+    }
 
     // Sync offline queue if we have internet
     try {
@@ -39,91 +90,94 @@ export default function JobsScreen() {
     setPendingSyncCount(queueLen);
 
     try {
-      // 1. Fetch user session and profile to get role and hotelId
-      const sessionRes = await apiClient.get("/auth/session");
-      if (sessionRes.data.success && sessionRes.data.data?.user_name) {
-        const username = sessionRes.data.data.user_name;
-        const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
-        if (profileRes.data.success && profileRes.data.data) {
-          const userData = profileRes.data.data;
-          const role = userData.role ? userData.role.toLowerCase() : "";
-          const uid = userData.id;
-          const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
-
-          setUserRole(role);
-          setUserId(uid);
-
-          if (hotelId) {
-            // Fetch and cache hotel coordinates for offline proximity check
-            try {
-              apiClient.get(`/Main/router-backend/api/hotels/${hotelId}`).then(async (hotelRes) => {
-                if (hotelRes.data.success && hotelRes.data.data) {
-                  const hData = hotelRes.data.data;
-                  if (hData.latitude && hData.longitude) {
-                    await AsyncStorage.setItem('cachedHotelCoordinates', JSON.stringify({
-                      hotelId,
-                      latitude: hData.latitude,
-                      longitude: hData.longitude
-                    }));
-                  }
-                }
-              }).catch((err) => {
-                console.warn("Async fetch of hotel coordinates failed:", err);
-              });
-            } catch (hErr) {
-              console.warn("Failed to pre-cache hotel coordinates:", hErr);
-            }
-
-            // Fetch Scheduled Tasks
-            const tasksRes = await apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`);
-            let fetchedScheduled: any[] = [];
-            if (tasksRes.data?.success && tasksRes.data.data) {
-              fetchedScheduled = tasksRes.data.data;
-              await syncService.cacheTasks(fetchedScheduled);
-
-              if (role === 'technician') {
-                fetchedScheduled = fetchedScheduled.filter((t: any) =>
-                  t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
-                );
-              } else if (role === 'engineer') {
-                fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
-              }
-            }
-            setScheduledTasks(fetchedScheduled);
-
-            // Fetch Manual Tasks
-            const manualRes = await apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`);
-            let fetchedManual: any[] = [];
-            if (manualRes.data?.success && manualRes.data.data) {
-              fetchedManual = manualRes.data.data;
-
-              if (role === 'technician') {
-                fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
-              } else if (role === 'engineer') {
-                fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
-              }
-            }
-            setManualTasks(fetchedManual);
+      // 2. Resolve user identity (check cache first, then API)
+      let userData: any = null;
+      const cachedProfileStr = await AsyncStorage.getItem('@user_profile_cache');
+      if (cachedProfileStr) {
+        userData = JSON.parse(cachedProfileStr);
+      } else {
+        const sessionRes = await apiClient.get("/auth/session");
+        if (sessionRes.data.success && sessionRes.data.data?.user_name) {
+          const username = sessionRes.data.data.user_name;
+          const profileRes = await apiClient.get(`/AuthForward/auth/api/email/${username}`);
+          if (profileRes.data.success && profileRes.data.data) {
+            const fullProfile = profileRes.data.data;
+            userData = {
+              id: fullProfile.id,
+              name: fullProfile.name,
+              email: fullProfile.email,
+              role: fullProfile.role,
+              hotelId: fullProfile.hotelId || fullProfile.hotels?.[0]?.id
+            };
+            await AsyncStorage.setItem('@user_profile_cache', JSON.stringify(userData));
           }
         }
       }
-    } catch (err) {
-      console.warn("Failed to load tasks from API, loading from offline cache instead:", err);
-      // Fallback: load tasks from cache
-      const cachedTasks = await syncService.getCachedTasks();
-      if (cachedTasks && cachedTasks.length > 0) {
-        let allTasks = cachedTasks;
-        const cachedRole = userRole || "technician";
-        const cachedUid = userId || "";
-        if (cachedRole === 'technician' && cachedUid) {
-          allTasks = allTasks.filter((t: any) =>
-            t.assigned_technicians?.some((tech: any) => tech.user_id === cachedUid)
-          );
-        } else if (cachedRole === 'engineer') {
-          allTasks = allTasks.filter((t: any) => t.priority === 'emergency');
+
+      if (userData) {
+        const role = userData.role ? userData.role.toLowerCase() : "";
+        const uid = userData.id;
+        const hotelId = userData.hotelId;
+
+        setUserRole(role);
+        setUserId(uid);
+
+        if (hotelId) {
+          // Pre-cache coordinates asynchronously
+          apiClient.get(`/Main/router-backend/api/hotels/${hotelId}`).then(async (hotelRes) => {
+            if (hotelRes.data.success && hotelRes.data.data) {
+              const hData = hotelRes.data.data;
+              if (hData.latitude && hData.longitude) {
+                await AsyncStorage.setItem('cachedHotelCoordinates', JSON.stringify({
+                  hotelId,
+                  latitude: hData.latitude,
+                  longitude: hData.longitude
+                }));
+              }
+            }
+          }).catch((err) => {
+            console.warn("Async fetch of hotel coordinates failed:", err);
+          });
+
+          // 3. Fetch scheduled and manual tasks in parallel!
+          const [tasksRes, manualRes] = await Promise.all([
+            apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`),
+            apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`)
+          ]);
+
+          // Process and cache Scheduled Tasks
+          let fetchedScheduled: any[] = [];
+          if (tasksRes.data?.success && tasksRes.data.data) {
+            fetchedScheduled = tasksRes.data.data;
+            await syncService.cacheTasks(fetchedScheduled);
+
+            if (role === 'technician') {
+              fetchedScheduled = fetchedScheduled.filter((t: any) =>
+                t.assigned_technicians?.some((tech: any) => tech.user_id === uid)
+              );
+            } else if (role === 'engineer') {
+              fetchedScheduled = fetchedScheduled.filter((t: any) => t.priority === 'emergency');
+            }
+          }
+          setScheduledTasks(fetchedScheduled);
+
+          // Process and cache Manual Tasks
+          let fetchedManual: any[] = [];
+          if (manualRes.data?.success && manualRes.data.data) {
+            fetchedManual = manualRes.data.data;
+            await syncService.cacheManualTasks(fetchedManual);
+
+            if (role === 'technician') {
+              fetchedManual = fetchedManual.filter((t: any) => t.assigned_to === uid);
+            } else if (role === 'engineer') {
+              fetchedManual = fetchedManual.filter((t: any) => t.priority === 'emergency');
+            }
+          }
+          setManualTasks(fetchedManual);
         }
-        setScheduledTasks(allTasks);
       }
+    } catch (err) {
+      console.warn("Failed to load tasks from API, offline fallback already active:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);

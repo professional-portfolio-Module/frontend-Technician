@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from './api';
 
 const CACHE_TASKS_KEY = '@tasks_cache';
+const CACHE_MANUAL_TASKS_KEY = '@manual_tasks_cache';
 const OFFLINE_QUEUE_KEY = '@offline_queue';
 
 export interface OfflineMutation {
@@ -37,6 +38,30 @@ export const syncService = {
   },
 
   /**
+   * Cache manual task list locally
+   */
+  async cacheManualTasks(tasks: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(CACHE_MANUAL_TASKS_KEY, JSON.stringify(tasks));
+    } catch (e) {
+      console.error('Failed to cache manual tasks locally:', e);
+    }
+  },
+
+  /**
+   * Retrieve cached manual tasks
+   */
+  async getCachedManualTasks(): Promise<any[]> {
+    try {
+      const cached = await AsyncStorage.getItem(CACHE_MANUAL_TASKS_KEY);
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      console.error('Failed to read cached manual tasks:', e);
+      return [];
+    }
+  },
+
+  /**
    * Add a task update/completion to the offline queue
    */
   async queueMutation(taskId: string, payload: any, isManual?: boolean): Promise<void> {
@@ -62,15 +87,25 @@ export const syncService = {
       await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
       
       // Update the local task cache status to reflect the change immediately offline
-      const tasks = await this.getCachedTasks();
-      const updatedTasks = tasks.map(t => {
-        const idToCheck = t.is_manual ? t.manual_task_id : t.task_id;
-        if (idToCheck === taskId) {
-          return { ...t, status: payload.status };
-        }
-        return t;
-      });
-      await this.cacheTasks(updatedTasks);
+      if (isManual) {
+        const tasks = await this.getCachedManualTasks();
+        const updatedTasks = tasks.map(t => {
+          if (t.manual_task_id === taskId) {
+            return { ...t, status: payload.status };
+          }
+          return t;
+        });
+        await this.cacheManualTasks(updatedTasks);
+      } else {
+        const tasks = await this.getCachedTasks();
+        const updatedTasks = tasks.map(t => {
+          if (t.task_id === taskId) {
+            return { ...t, status: payload.status };
+          }
+          return t;
+        });
+        await this.cacheTasks(updatedTasks);
+      }
     } catch (e) {
       console.error('Failed to queue offline mutation:', e);
     }

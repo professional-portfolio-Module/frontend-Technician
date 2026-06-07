@@ -162,7 +162,7 @@ export default function ProfileScreen() {
 
               if (usersRes.data?.success && usersRes.data.data) {
                 const hotelUsers = usersRes.data.data;
-                const hotelAdmins = hotelUsers.filter((u: any) => u.role === 'admin');
+                const hotelAdmins = hotelUsers.filter((u: any) => u.role?.toLowerCase() === 'admin');
                 setAdmins(hotelAdmins);
                 await AsyncStorage.setItem('@hotel_admins_cache', JSON.stringify(hotelAdmins));
               }

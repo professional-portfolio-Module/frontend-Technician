@@ -135,7 +135,16 @@ export const syncService = {
                 filename: mutation.payload.attachment_filename || 'evidence.jpg'
               });
               if (uploadRes.data && uploadRes.data.success && uploadRes.data.data?.url) {
-                mutation.payload.attachment_url = uploadRes.data.data.url;
+                // Determine if this is an engineer submission payload
+                const isEngineer = ('engineer_remarks' in mutation.payload) || 
+                                   ('eng_remarks' in mutation.payload) || 
+                                   ('engineer_attachment_url' in mutation.payload) ||
+                                   ('checked_by' in mutation.payload);
+                if (isEngineer) {
+                  mutation.payload.engineer_attachment_url = uploadRes.data.data.url;
+                } else {
+                  mutation.payload.attachment_url = uploadRes.data.data.url;
+                }
               }
             } catch (uploadErr) {
               console.warn(`[Sync] Image upload failed for task ${mutation.taskId}, skipping task sync for now:`, uploadErr);

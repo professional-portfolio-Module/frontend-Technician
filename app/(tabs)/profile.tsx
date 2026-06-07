@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, Platform, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, Platform, ActivityIndicator, Modal, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { User, Settings, LogOut, Shield, HelpCircle, ChevronRight, LucideIcon, Languages } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -14,10 +14,11 @@ interface ProfileItemProps {
   title: string;
   color?: string;
   isLast?: boolean;
+  onPress?: () => void;
 }
 
-const ProfileItem = ({ icon: Icon, title, color = "#64748b", isLast = false }: ProfileItemProps) => (
-  <TouchableOpacity style={[styles.itemContainer, !isLast && styles.itemBorder]}>
+const ProfileItem = ({ icon: Icon, title, color = "#64748b", isLast = false, onPress }: ProfileItemProps) => (
+  <TouchableOpacity onPress={onPress} style={[styles.itemContainer, !isLast && styles.itemBorder]}>
     <View style={styles.itemLeft}>
       <View style={styles.iconContainer}>
         <Icon color={color} size={20} />
@@ -37,6 +38,25 @@ export default function ProfileScreen() {
   const [userRole, setUserRole] = useState("");
   const [completedJobsCount, setCompletedJobsCount] = useState(0);
 
+  const [userId, setUserId] = useState("");
+  const [userPhone, setUserPhone] = useState("");
+
+  // Modal visibilities
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
+  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
+  const [helpSupportVisible, setHelpSupportVisible] = useState(false);
+
+  // Edit profile form fields
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Change password form fields
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+
   useEffect(() => {
     const fetchSession = async () => {
       try {
@@ -52,6 +72,8 @@ export default function ProfileScreen() {
           setUserRole(profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1).toLowerCase() : "Technician");
           cachedUid = profile.id || "";
           cachedHotelId = profile.hotelId || "";
+          setUserId(profile.id || "");
+          setUserPhone(profile.phone || profile.mobileNumber || "");
         }
 
         const [cachedScheduled, cachedManual] = await Promise.all([
@@ -81,6 +103,8 @@ export default function ProfileScreen() {
             setUserName(userData.name || "Technician");
             setUserEmail(userData.email || "");
             setUserRole(userData.role ? userData.role.charAt(0).toUpperCase() + userData.role.slice(1).toLowerCase() : "Technician");
+            setUserId(userData.id || "");
+            setUserPhone(userData.mobileNumber || "");
 
             const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
             const uid = userData.id;
@@ -91,6 +115,7 @@ export default function ProfileScreen() {
               name: userData.name,
               email: userData.email,
               role: userData.role,
+              phone: userData.mobileNumber,
               hotelId
             }));
 
@@ -134,6 +159,91 @@ export default function ProfileScreen() {
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!editName.trim()) {
+      showAlert("Error", "Name cannot be empty");
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      // 1. Update in main backend
+      const mainRes = await apiClient.put(`/Main/router-backend/api/users/${userId}`, {
+        name: editName.trim(),
+        phone: editPhone.trim()
+      });
+      
+      // 2. Update in auth service
+      const authRes = await apiClient.post("/AuthForward/auth/api/update/user", {
+        id: userId,
+        email: userEmail,
+        mobileNumber: editPhone.trim()
+      });
+
+      if (mainRes.data.success && authRes.data.success) {
+        setUserName(editName.trim());
+        setUserPhone(editPhone.trim());
+        
+        // Update cache
+        const cachedProfileStr = await AsyncStorage.getItem('@user_profile_cache');
+        if (cachedProfileStr) {
+          const profile = JSON.parse(cachedProfileStr);
+          await AsyncStorage.setItem('@user_profile_cache', JSON.stringify({
+            ...profile,
+            name: editName.trim(),
+            phone: editPhone.trim()
+          }));
+        }
+        
+        showAlert("Success", "Profile updated successfully!");
+        setEditProfileVisible(false);
+      } else {
+        showAlert("Error", "Failed to update profile.");
+      }
+    } catch (err: any) {
+      console.error("Update profile failed:", err);
+      showAlert("Error", err.response?.data?.message || err.message || "Failed to update profile.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      showAlert("Error", "Please fill in all fields.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      showAlert("Error", "New password must be at least 8 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showAlert("Error", "New password and confirmation do not match.");
+      return;
+    }
+    setIsSavingPassword(true);
+    try {
+      const res = await apiClient.post("/AuthForward/auth/api/update/userPassword", {
+        currentPassword,
+        newPassword,
+        confirmPassword
+      });
+      if (res.data.success) {
+        showAlert("Success", "Password updated successfully!");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setChangePasswordVisible(false);
+      } else {
+        showAlert("Error", res.data.message || "Failed to update password.");
+      }
+    } catch (err: any) {
+      console.error("Password change failed:", err);
+      showAlert("Error", err.response?.data?.message || err.message || "Failed to update password.");
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
   const showAlert = (title: string, message: string, onSuccess?: () => void) => {
@@ -225,9 +335,34 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
           <View style={styles.itemsCard}>
-            <ProfileItem icon={User} title="Personal Information" color="#1B428A" />
-            <ProfileItem icon={Shield} title="Security & Password" color="#C5A059" />
-            <ProfileItem icon={HelpCircle} title="Help & Support" color="#1B428A" isLast={true} />
+            <ProfileItem 
+              icon={User} 
+              title="Personal Information" 
+              color="#1B428A"
+              onPress={() => {
+                setEditName(userName);
+                setEditPhone(userPhone);
+                setEditProfileVisible(true);
+              }}
+            />
+            <ProfileItem 
+              icon={Shield} 
+              title="Security & Password" 
+              color="#C5A059"
+              onPress={() => {
+                setCurrentPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setChangePasswordVisible(true);
+              }}
+            />
+            <ProfileItem 
+              icon={HelpCircle} 
+              title="Help & Support" 
+              color="#1B428A" 
+              isLast={true}
+              onPress={() => setHelpSupportVisible(true)}
+            />
           </View>
         </View>
 
@@ -245,7 +380,175 @@ export default function ProfileScreen() {
             </>
           )}
         </TouchableOpacity>
-        
+
+        {/* Personal Info Modal */}
+        <Modal
+          visible={editProfileVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setEditProfileVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Edit Personal Information</Text>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Full Name</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Mobile Number</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  placeholder="Enter mobile number"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnCancel]} 
+                  onPress={() => setEditProfileVisible(false)}
+                  disabled={isSavingProfile}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnSubmit]} 
+                  onPress={handleUpdateProfile}
+                  disabled={isSavingProfile}
+                >
+                  {isSavingProfile ? (
+                    <ActivityIndicator color="white" size="small" />
+                  ) : (
+                    <Text style={styles.modalBtnSubmitText}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Security & Password Modal */}
+        <Modal
+          visible={changePasswordVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setChangePasswordVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Change Password</Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Current Password</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder="Enter current password"
+                  placeholderTextColor="#94a3b8"
+                  secureTextEntry={true}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>New Password</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="At least 8 characters"
+                  placeholderTextColor="#94a3b8"
+                  secureTextEntry={true}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm New Password</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm new password"
+                  placeholderTextColor="#94a3b8"
+                  secureTextEntry={true}
+                />
+              </View>
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnCancel]} 
+                  onPress={() => setChangePasswordVisible(false)}
+                  disabled={isSavingPassword}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnSubmit]} 
+                  onPress={handleUpdatePassword}
+                  disabled={isSavingPassword}
+                >
+                  {isSavingPassword ? (
+                    <ActivityIndicator color="white" size="small" />
+                  ) : (
+                    <Text style={styles.modalBtnSubmitText}>Update</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Help & Support Modal */}
+        <Modal
+          visible={helpSupportVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setHelpSupportVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalHeader}>Help & Support</Text>
+              
+              <Text style={styles.supportText}>
+                For system issues, technical queries, or feedback, please contact the administrator:
+              </Text>
+              
+              <View style={{ marginVertical: 12 }}>
+                <Text style={[styles.supportText, { fontWeight: '600' }]}>
+                  📧 Email: support@brownshotels.com
+                </Text>
+                <Text style={[styles.supportText, { fontWeight: '600' }]}>
+                  📞 Hotline: +94 11 234 5678
+                </Text>
+                <Text style={[styles.supportText, { fontWeight: '600' }]}>
+                  ⏰ Hours: 24/7 Operations
+                </Text>
+              </View>
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnSubmit]} 
+                  onPress={() => setHelpSupportVisible(false)}
+                >
+                  <Text style={styles.modalBtnSubmitText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <View style={{ height: 100 }} />
       </ScrollView>
     </SafeAreaView>
@@ -454,5 +757,85 @@ const styles = StyleSheet.create({
   },
   langBtnTextActive: {
     color: "white",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 24,
+    width: "100%",
+    maxWidth: 400,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1B428A",
+    marginBottom: 20,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+    marginBottom: 6,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+    fontSize: 16,
+    color: "#0f172a",
+    backgroundColor: "#f8fafc",
+  },
+  modalBtnRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 12,
+  },
+  modalBtn: {
+    height: 44,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 90,
+  },
+  modalBtnCancel: {
+    backgroundColor: "#f1f5f9",
+  },
+  modalBtnCancelText: {
+    color: "#475569",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  modalBtnSubmit: {
+    backgroundColor: "#1B428A",
+  },
+  modalBtnSubmitText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  supportText: {
+    fontSize: 15,
+    color: "#334155",
+    lineHeight: 22,
+    marginBottom: 8,
   },
 });

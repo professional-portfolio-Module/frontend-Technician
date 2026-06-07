@@ -557,7 +557,7 @@ export default function MachineProfile() {
     }
 
     const filename = localUri.split('/').pop() || "evidence.jpg";
-    const response = await apiClient.post("/Main/router-backend/api/upload", {
+    const response = await apiClient.post("/Main/router-backend/api/system/upload", {
       image: base64Data,
       filename: filename
     });

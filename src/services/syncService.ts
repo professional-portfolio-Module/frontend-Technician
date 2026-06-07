@@ -130,7 +130,7 @@ export const syncService = {
           // If there is an offline base64 image, upload it first before syncing the task
           if (mutation.payload && mutation.payload.attachment_base64) {
             try {
-              const uploadRes = await apiClient.post('/Main/router-backend/api/upload', {
+              const uploadRes = await apiClient.post('/Main/router-backend/api/system/upload', {
                 image: mutation.payload.attachment_base64,
                 filename: mutation.payload.attachment_filename || 'evidence.jpg'
               });

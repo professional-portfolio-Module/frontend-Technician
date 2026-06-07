@@ -160,8 +160,8 @@ export default function MachineProfile() {
                 hasActionableTask = true;
               }
               setScheduledTask(localTask);
-              setRemarks(localTask.technician_remarks || "");
-              setEvidenceImage(localTask.attachment_url || null);
+              setRemarks(role === "engineer" ? (localTask.engineer_remarks || "") : (localTask.technician_remarks || ""));
+              setEvidenceImage(role === "engineer" ? (localTask.engineer_attachment_url || null) : (localTask.attachment_url || null));
               if (role === 'technician') {
                 const hasAssignments = localTask.assigned_technicians && localTask.assigned_technicians.length > 0;
                 let isAssigned = !hasAssignments || localTask.assigned_technicians.some((tech: any) => tech.user_id === userId);
@@ -268,8 +268,8 @@ export default function MachineProfile() {
                     hasActionableTask = true;
                   }
                   setScheduledTask(normalizedTask);
-                  setRemarks(normalizedTask.tech_remarks || "");
-                  setEvidenceImage(normalizedTask.attachment_url || null);
+                  setRemarks(role === "engineer" ? (normalizedTask.eng_remarks || "") : (normalizedTask.tech_remarks || ""));
+                  setEvidenceImage(role === "engineer" ? (normalizedTask.engineer_attachment_url || null) : (normalizedTask.attachment_url || null));
                 } else {
                   setScheduledTask(null);
                 }
@@ -339,8 +339,8 @@ export default function MachineProfile() {
                   hasActionableTask = true;
                 }
                 setScheduledTask(taskData);
-                setRemarks(taskData.technician_remarks || "");
-                setEvidenceImage(taskData.attachment_url || null);
+                setRemarks(role === "engineer" ? (taskData.engineer_remarks || "") : (taskData.technician_remarks || ""));
+                setEvidenceImage(role === "engineer" ? (taskData.engineer_attachment_url || null) : (taskData.attachment_url || null));
               } else {
                 setScheduledTask(null);
               }
@@ -355,8 +355,8 @@ export default function MachineProfile() {
               if (localTask.status !== 'completed' && localTask.status !== 'under_review') {
                 hasActionableTask = true;
               }
-              setRemarks(localTask.technician_remarks || "");
-              setEvidenceImage(localTask.attachment_url || null);
+              setRemarks(role === "engineer" ? (localTask.engineer_remarks || "") : (localTask.technician_remarks || ""));
+              setEvidenceImage(role === "engineer" ? (localTask.engineer_attachment_url || null) : (localTask.attachment_url || null));
             }
           }
         } catch (error) {
@@ -383,8 +383,8 @@ export default function MachineProfile() {
               hasActionableTask = true;
             }
             setScheduledTask(localTask);
-            setRemarks(localTask.technician_remarks || "");
-            setEvidenceImage(localTask.attachment_url || null);
+            setRemarks(role === "engineer" ? (localTask.engineer_remarks || "") : (localTask.technician_remarks || ""));
+            setEvidenceImage(role === "engineer" ? (localTask.engineer_attachment_url || null) : (localTask.attachment_url || null));
           } else {
             setError("Failed to fetch asset details from backend API and no local cache was found.");
             setScheduledTask(null);
@@ -658,7 +658,11 @@ export default function MachineProfile() {
         localUrl = await uploadImageToLocalBackend(evidenceImage, evidenceBase64);
       }
 
-      payload.attachment_url = localUrl || scheduledTask.attachment_url;
+      if (userRole === "technician") {
+        payload.attachment_url = localUrl || scheduledTask.attachment_url;
+      } else if (userRole === "engineer") {
+        payload.engineer_attachment_url = localUrl || scheduledTask.engineer_attachment_url;
+      }
 
       try {
         const res = isManual
@@ -676,12 +680,16 @@ export default function MachineProfile() {
       } catch (err) {
         console.warn("API update failed, queueing mutation offline:", err);
         // Include base64 for offline sync upload later
-        const offlinePayload = {
+        const offlinePayload: any = {
           ...payload,
-          attachment_url: null,
           attachment_base64: evidenceBase64,
           attachment_filename: evidenceImage ? evidenceImage.split('/').pop() : 'evidence.jpg'
         };
+        if (userRole === "technician") {
+          offlinePayload.attachment_url = null;
+        } else if (userRole === "engineer") {
+          offlinePayload.engineer_attachment_url = null;
+        }
         await syncService.queueMutation(scheduledTask.task_id, offlinePayload, isManual);
         Alert.alert("Offline Sync Queued", "You are currently offline. Your checklist updates have been saved locally and will sync when a network connection is restored.");
         setMachine({ ...machine, status: targetStatus === "completed" ? "check completed" : targetStatus });
@@ -981,7 +989,7 @@ export default function MachineProfile() {
               styles.inputWrapper,
               (isPendingTask ||
                 scheduledTask.status === 'completed' ||
-                scheduledTask.status === 'under_review' ||
+                (userRole === 'technician' && scheduledTask.status === 'under_review') ||
                 (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && { opacity: 0.5 }
             ]}>
               <TextInput
@@ -991,7 +999,7 @@ export default function MachineProfile() {
                     ? "REQUIRED: Explain why this task was not completed before the due date..."
                     : isPendingTask
                       ? "Locked: Change status to in-progress to start..."
-                      : (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review')
+                      : (scheduledTask.status === 'completed' || (userRole === 'technician' && scheduledTask.status === 'under_review'))
                         ? "No remarks provided for this task."
                         : (userRole === 'technician' && scheduledTask.priority === 'emergency')
                           ? "Task escalated to emergency. Remarks are read-only."
@@ -1008,7 +1016,7 @@ export default function MachineProfile() {
                   isExpiredOrWasExpired ||
                   (!isPendingTask &&
                     scheduledTask.status !== 'completed' &&
-                    scheduledTask.status !== 'under_review' &&
+                    !(userRole === 'technician' && scheduledTask.status === 'under_review') &&
                     !(userRole === 'technician' && scheduledTask.priority === 'emergency'))
                 }
               />
@@ -1019,7 +1027,9 @@ export default function MachineProfile() {
         {/* Work Evidence Upload Section (Only mandatory for technician completed or optional for engineer) */}
         {scheduledTask && isAssignedTech && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Work Evidence</Text>
+            <Text style={styles.sectionTitle}>
+              {userRole === 'engineer' ? 'Verification Photo Evidence' : 'Work Evidence'}
+            </Text>
             {!evidenceImage ? (
               <TouchableOpacity
                 style={[
@@ -1027,7 +1037,7 @@ export default function MachineProfile() {
                   (!scheduledTask ||
                     isPendingTask ||
                     scheduledTask.status === 'completed' ||
-                    scheduledTask.status === 'under_review' ||
+                    (userRole === 'technician' && scheduledTask.status === 'under_review') ||
                     (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadBox
                 ]}
                 onPress={handlePickEvidence}
@@ -1035,7 +1045,7 @@ export default function MachineProfile() {
                   !scheduledTask ||
                   isPendingTask ||
                   scheduledTask.status === 'completed' ||
-                  scheduledTask.status === 'under_review' ||
+                  (userRole === 'technician' && scheduledTask.status === 'under_review') ||
                   (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)
                 }
               >
@@ -1044,7 +1054,7 @@ export default function MachineProfile() {
                     (scheduledTask &&
                       !isPendingTask &&
                       scheduledTask.status !== 'completed' &&
-                      scheduledTask.status !== 'under_review' &&
+                      !(userRole === 'technician' && scheduledTask.status === 'under_review') &&
                       !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired))
                       ? "#1B428A"
                       : "#cbd5e1"
@@ -1057,19 +1067,21 @@ export default function MachineProfile() {
                     (!scheduledTask ||
                       isPendingTask ||
                       scheduledTask.status === 'completed' ||
-                      scheduledTask.status === 'under_review' ||
+                      (userRole === 'technician' && scheduledTask.status === 'under_review') ||
                       (userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired)) && styles.disabledUploadText
                   ]}
                 >
-                  Add Photo Evidence
+                  {userRole === 'engineer' ? 'Add Verification Photo' : 'Add Photo Evidence'}
                 </Text>
-                <Text style={styles.uploadSubtext}>Mandatory for status updates</Text>
+                <Text style={styles.uploadSubtext}>
+                  {userRole === 'engineer' ? 'Required for verification' : 'Mandatory for status updates'}
+                </Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.evidenceContainer}>
                 <Image source={{ uri: evidenceImage }} style={styles.evidencePreview} />
                 {scheduledTask.status !== 'completed' &&
-                  scheduledTask.status !== 'under_review' &&
+                  !(userRole === 'technician' && scheduledTask.status === 'under_review') &&
                   !(userRole === 'technician' && scheduledTask.priority === 'emergency' && !isExpiredOrWasExpired) && (
                     <TouchableOpacity
                       style={styles.removeEvidence}

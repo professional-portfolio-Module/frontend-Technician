@@ -57,6 +57,14 @@ export default function ProfileScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
+  interface AdminInfo {
+    name: string;
+    email: string;
+    mobilenumber?: string;
+    role: string;
+  }
+  const [admins, setAdmins] = useState<AdminInfo[]>([]);
+
   useEffect(() => {
     const fetchSession = async () => {
       try {
@@ -74,6 +82,11 @@ export default function ProfileScreen() {
           cachedHotelId = profile.hotelId || "";
           setUserId(profile.id || "");
           setUserPhone(profile.phone || profile.mobileNumber || "");
+        }
+
+        const cachedAdminsStr = await AsyncStorage.getItem('@hotel_admins_cache');
+        if (cachedAdminsStr) {
+          setAdmins(JSON.parse(cachedAdminsStr));
         }
 
         const [cachedScheduled, cachedManual] = await Promise.all([
@@ -120,10 +133,11 @@ export default function ProfileScreen() {
             }));
 
             if (hotelId) {
-              // Fetch tasks in parallel
-              const [tasksRes, manualRes] = await Promise.all([
+              // Fetch tasks and users in parallel
+              const [tasksRes, manualRes, usersRes] = await Promise.all([
                 apiClient.get(`/Main/router-backend/api/scheduled-tasks?hotel_id=${hotelId}`),
-                apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`)
+                apiClient.get(`/Main/router-backend/api/manual-tasks?hotel_id=${hotelId}`),
+                apiClient.get(`/Main/router-backend/api/users?hotel_id=${hotelId}`)
               ]);
 
               let completedCount = 0;
@@ -144,6 +158,13 @@ export default function ProfileScreen() {
                   t.status === 'completed' && t.assigned_to === uid
                 );
                 completedCount += completedManual.length;
+              }
+
+              if (usersRes.data?.success && usersRes.data.data) {
+                const hotelUsers = usersRes.data.data;
+                const hotelAdmins = hotelUsers.filter((u: any) => u.role === 'admin');
+                setAdmins(hotelAdmins);
+                await AsyncStorage.setItem('@hotel_admins_cache', JSON.stringify(hotelAdmins));
               }
 
               setCompletedJobsCount(completedCount);
@@ -521,21 +542,46 @@ export default function ProfileScreen() {
             <View style={styles.modalContent}>
               <Text style={styles.modalHeader}>Help & Support</Text>
               
-              <Text style={styles.supportText}>
-                For system issues, technical queries, or feedback, please contact the administrator:
-              </Text>
-              
-              <View style={{ marginVertical: 12 }}>
-                <Text style={[styles.supportText, { fontWeight: '600' }]}>
-                  📧 Email: support@brownshotels.com
-                </Text>
-                <Text style={[styles.supportText, { fontWeight: '600' }]}>
-                  📞 Hotline: +94 11 234 5678
-                </Text>
-                <Text style={[styles.supportText, { fontWeight: '600' }]}>
-                  ⏰ Hours: 24/7 Operations
-                </Text>
-              </View>
+              {admins.length > 0 ? (
+                <>
+                  <Text style={styles.supportText}>
+                    Please contact one of the following administrators or engineers for your hotel:
+                  </Text>
+                  
+                  <ScrollView style={{ maxHeight: 200, marginVertical: 12 }} showsVerticalScrollIndicator={true}>
+                    {admins.map((admin, idx) => (
+                      <View key={idx} style={styles.adminCard}>
+                        <Text style={styles.adminName}>{admin.name}</Text>
+                        <Text style={styles.adminRole}>
+                          {admin.role.charAt(0).toUpperCase() + admin.role.slice(1).toLowerCase()}
+                        </Text>
+                        <Text style={styles.adminContact}>📧 {admin.email}</Text>
+                        {admin.mobilenumber ? (
+                          <Text style={styles.adminContact}>📞 {admin.mobilenumber}</Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.supportText}>
+                    For system issues, technical queries, or feedback, please contact the administrator:
+                  </Text>
+                  
+                  <View style={{ marginVertical: 12 }}>
+                    <Text style={[styles.supportText, { fontWeight: '600' }]}>
+                      📧 Email: support@brownshotels.com
+                    </Text>
+                    <Text style={[styles.supportText, { fontWeight: '600' }]}>
+                      📞 Hotline: +94 11 234 5678
+                    </Text>
+                    <Text style={[styles.supportText, { fontWeight: '600' }]}>
+                      ⏰ Hours: 24/7 Operations
+                    </Text>
+                  </View>
+                </>
+              )}
 
               <View style={styles.modalBtnRow}>
                 <TouchableOpacity 
@@ -837,5 +883,30 @@ const styles = StyleSheet.create({
     color: "#334155",
     lineHeight: 22,
     marginBottom: 8,
+  },
+  adminCard: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  adminName: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1B428A",
+  },
+  adminRole: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    textTransform: "capitalize",
+    marginBottom: 6,
+  },
+  adminContact: {
+    fontSize: 14,
+    color: "#334155",
+    marginTop: 2,
   },
 });

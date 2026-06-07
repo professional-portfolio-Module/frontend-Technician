@@ -809,7 +809,11 @@ export default function MachineProfile() {
   }
 
   const isEmergency = scheduledTask?.priority === "emergency";
-  const showTechRemarksForEngineer = userRole === "engineer" && scheduledTask?.technician_remarks;
+  const techRemarks = scheduledTask?.is_manual ? scheduledTask.tech_remarks : scheduledTask?.technician_remarks;
+  const showTechRemarksForEngineer = userRole === "engineer" && techRemarks;
+  const engineerRemarks = scheduledTask?.is_manual ? scheduledTask.eng_remarks : scheduledTask?.engineer_remarks;
+  const engineerEvidence = scheduledTask?.engineer_attachment_url;
+  const showEngineerRemarksForTechnician = userRole === "technician" && (engineerRemarks || engineerEvidence);
   const isPendingTask = userRole === "technician" && scheduledTask && scheduledTask.status === "pending";
   const isCompletedOrReview = scheduledTask && (scheduledTask.status === 'completed' || scheduledTask.status === 'under_review');
   const isExpiredTask = scheduledTask && scheduledTask.status === 'expired';
@@ -968,11 +972,31 @@ export default function MachineProfile() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Technician's Findings</Text>
             <View style={styles.techRemarksCard}>
-              <Text style={styles.techRemarksText}>{scheduledTask.technician_remarks}</Text>
+              <Text style={styles.techRemarksText}>{techRemarks}</Text>
               {scheduledTask.attachment_url && (
                 <View style={styles.techAttachmentContainer}>
                   <Text style={styles.techAttachmentLabel}>Photo Evidence Attached:</Text>
                   <Image source={{ uri: scheduledTask.attachment_url }} style={styles.techAttachmentPreview} />
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Display Engineer Verification Details to Technician */}
+        {showEngineerRemarksForTechnician && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Engineer's Review & Actions</Text>
+            <View style={styles.techRemarksCard}>
+              {engineerRemarks ? (
+                <Text style={styles.techRemarksText}>{engineerRemarks}</Text>
+              ) : (
+                <Text style={styles.techRemarksText}>No engineer remarks provided.</Text>
+              )}
+              {engineerEvidence && (
+                <View style={styles.techAttachmentContainer}>
+                  <Text style={styles.techAttachmentLabel}>Verification Photo Evidence:</Text>
+                  <Image source={{ uri: engineerEvidence }} style={styles.techAttachmentPreview} />
                 </View>
               )}
             </View>

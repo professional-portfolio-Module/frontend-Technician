@@ -48,8 +48,7 @@ export default function JobsScreen() {
           const userData = profileRes.data.data;
           const role = userData.role ? userData.role.toLowerCase() : "";
           const uid = userData.id;
-          const hotels = userData.hotels || [];
-          const hotelId = hotels[0]?.id;
+          const hotelId = userData.hotelId || userData.hotels?.[0]?.id;
 
           setUserRole(role);
           setUserId(uid);

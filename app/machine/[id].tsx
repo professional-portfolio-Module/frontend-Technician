@@ -440,10 +440,19 @@ export default function MachineProfile() {
         console.warn("Failed to fetch global proximity status, defaulting to false:", err);
       }
 
+      if (__DEV__ || globalBypass) {
+        console.log(`Proximity restriction bypassed globally (global bypass: ${globalBypass})`);
+        setIsNear(true);
+        setIsProximityBypassed(true);
+        setIsVerifying(false);
+        return;
+      }
+
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permission Denied", "Location access is required to verify proximity.");
         setIsNear(false);
+        setIsVerifying(false);
         return;
       }
 

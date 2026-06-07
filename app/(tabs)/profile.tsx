@@ -153,8 +153,11 @@ export default function ProfileScreen() {
     } catch (error: any) {
       console.error("Logout Error:", error);
     } finally {
-      // Always clear token and redirect, even if server call fails
-      await AsyncStorage.removeItem('authToken');
+      // Clear token, user profile, and cached tasks, then redirect
+      await Promise.all([
+        AsyncStorage.removeItem('authToken'),
+        syncService.clearAllCaches()
+      ]);
       setLoading(false);
       router.replace("/auth/login");
     }

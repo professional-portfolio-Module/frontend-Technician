@@ -6,6 +6,7 @@ import { Mail, Lock, ArrowRight, ChevronLeft, UserCircle2, Eye, EyeOff } from "l
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from "../../src/services/api";
+import { syncService } from "../../src/services/syncService";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -63,6 +64,9 @@ export default function LoginScreen() {
           setIsLoading(false);
           return;
         }
+
+        // Clear old user caches to prevent flash/leak of previous user's profile and tasks
+        await syncService.clearAllCaches();
 
         if (accessToken) {
           await AsyncStorage.setItem('authToken', accessToken);

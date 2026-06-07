@@ -193,5 +193,20 @@ export const syncService = {
     } catch {
       return 0;
     }
+  },
+
+  /**
+   * Clear all local caches on logout
+   */
+  async clearAllCaches(): Promise<void> {
+    try {
+      await AsyncStorage.multiRemove([
+        CACHE_TASKS_KEY,
+        CACHE_MANUAL_TASKS_KEY,
+        '@user_profile_cache'
+      ]);
+    } catch (e) {
+      console.error('Failed to clear local caches:', e);
+    }
   }
 };
